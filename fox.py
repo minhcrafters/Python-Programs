@@ -206,11 +206,10 @@ def main():
             coin_x = random.uniform(0, WIDTH - player.rect.x / 2)
             coin_y = random.uniform(0, HEIGHT - player.rect.y / 2)
             if (
-                coin_sprite.rect.center[0] <= 10
-                or coin_sprite.rect.center[0] >= WIDTH - 20
+                coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
             ) or (
-                coin_sprite.rect.center[1] <= 10
-                or coin_sprite.rect.center[1] >= HEIGHT - 20
+                coin_sprite.rect.centery <= 10
+                or coin_sprite.rect.centery >= HEIGHT - 20
             ):
                 coin_x = random.uniform(0, WIDTH - coin_x - 50)
                 coin_y = random.uniform(0, HEIGHT - coin_y - 50)
@@ -222,7 +221,8 @@ def main():
 
         if debug:
             screen.blit(
-                smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)), (10, 10)
+                smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)),
+                (10, 10),
             )
 
             screen.blit(
