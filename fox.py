@@ -90,8 +90,8 @@ class Actor(pygame.sprite.Sprite):
         # self.vec.x += clamped_pos_x
         # self.vec.y += clamped_pos_y
 
-        self.vec.x *= 0.92 if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]) else 1
-        self.vec.y *= 0.92 if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]) else 1
+        self.vec.x *= 0.9 if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]) else 1
+        self.vec.y *= 0.9 if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]) else 1
 
     def move_rel(self, pos_rel: pygame.Vector2):
         dx = pos_rel.x / self.steps * self.accel
@@ -119,7 +119,7 @@ class Actor(pygame.sprite.Sprite):
 def draw_scores():
     score_text = font.render("Score: " + str(score), True, "white")
     text_x = (WIDTH - score_text.get_width()) // 2
-    text_y = font.get_height() // 2 + 10
+    text_y = font.get_height() // 2
     screen.blit(score_text, (text_x, text_y))
 
 
@@ -222,7 +222,7 @@ def main():
 
         if debug:
             screen.blit(
-                smaller_font.render(str(pos_rel), True, (255, 255, 255)), (10, 10)
+                smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)), (10, 10)
             )
 
             screen.blit(
