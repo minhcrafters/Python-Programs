@@ -149,6 +149,63 @@ def draw_timer():
     screen.blit(time_text, (text_x, text_y))
 
 
+def draw_debug_menu(player: Actor, coin_sprite: Actor, pos_rel: pygame.Vector2):
+    screen.blit(
+        smaller_font.render(
+            f"pos_fox:\n{str(round(player.pos, 2))}", True, (255, 255, 255)
+        ),
+        (10, 10),
+    )
+
+    screen.blit(
+        smaller_font.render(
+            f"pos_coin:\n{str(round(coin_sprite.pos, 2))}",
+            True,
+            (255, 255, 255),
+        ),
+        (10, 50 + smaller_font.get_height()),
+    )
+
+    screen.blit(
+        smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)),
+        (10, 115 + smaller_font.get_height()),
+    )
+
+    screen.blit(
+        smaller_font.render(
+            f"vel:\n{str(round(player.vec, 2))}", True, (255, 255, 255)
+        ),
+        (10, 180 + smaller_font.get_height()),
+    )
+
+    screen.blit(
+        smaller_font.render(str(round(pos_rel.magnitude(), 1)), True, (255, 255, 255)),
+        pygame.draw.line(
+            screen, (255, 0, 0), player.rect.center, coin_sprite.rect.center
+        ).center,
+    )
+
+    screen.blit(
+        smaller_font.render(str(round(pos_rel.x, 1)), True, (255, 255, 255)),
+        pygame.draw.line(
+            screen,
+            (255, 0, 0),
+            player.rect.center,
+            (coin_sprite.rect.centerx, player.rect.centery),
+        ).center,
+    )
+
+    screen.blit(
+        smaller_font.render(str(round(pos_rel.y, 1)), True, (255, 255, 255)),
+        pygame.draw.line(
+            screen,
+            (255, 0, 0),
+            coin_sprite.rect.center,
+            (coin_sprite.rect.centerx, player.rect.centery),
+        ).center,
+    )
+
+
 def main():
     global score, coin_x, coin_y, fox, coin
 
@@ -232,60 +289,7 @@ def main():
         # screen.blit(coin, coin_rect)
 
         if debug:
-            screen.blit(
-                smaller_font.render(
-                    f"pos_fox:\n{str(round(player.pos, 2))}", True, (255, 255, 255)
-                ),
-                (10, 10),
-            )
-
-            screen.blit(
-                smaller_font.render(
-                    f"pos_coin:\n{str(round(coin_sprite.pos, 2))}",
-                    True,
-                    (255, 255, 255),
-                ),
-                (10, 50 + smaller_font.get_height()),
-            )
-
-            screen.blit(
-                smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)),
-                (10, 115 + smaller_font.get_height()),
-            )
-
-            screen.blit(
-                smaller_font.render(
-                    f"vel:\n{str(round(player.vec, 2))}", True, (255, 255, 255)
-                ),
-                (10, 180 + smaller_font.get_height()),
-            )
-
-            screen.blit(
-                smaller_font.render(
-                    str(round(pos_rel.magnitude(), 1)), True, (255, 255, 255)
-                ),
-                pygame.draw.line(
-                    screen, (255, 0, 0), player.rect.center, coin_sprite.rect.center
-                ).center,
-            )
-            
-            screen.blit(
-                smaller_font.render(
-                    str(round(pos_rel.x, 1)), True, (255, 255, 255)
-                ),
-                pygame.draw.line(
-                    screen, (255, 0, 0), player.rect.center, (coin_sprite.rect.centerx, player.rect.centery)
-                ).center,
-            )
-            
-            screen.blit(
-                smaller_font.render(
-                    str(round(pos_rel.y, 1)), True, (255, 255, 255)
-                ),
-                pygame.draw.line(
-                    screen, (255, 0, 0), coin_sprite.rect.center, (coin_sprite.rect.centerx, player.rect.centery)
-                ).center,
-            )
+            draw_debug_menu(player, coin_sprite, pos_rel)
 
         manager.update(time_delta)
 
