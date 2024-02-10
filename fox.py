@@ -6,14 +6,13 @@ import pygame_gui
 score = 0
 
 WIDTH, HEIGHT = 800, 600
-DT_SHIFT = 10
 
 pygame.init()
 pygame.font.init()
 
 font = pygame.font.SysFont("Consolas", 36)
 smaller_font = pygame.font.SysFont("Consolas", 24)
-screen = pygame.display.set_mode((WIDTH, HEIGHT), vsync=1)
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
 pygame.display.set_caption("Coin Collector")
 
@@ -89,21 +88,34 @@ class Actor(pygame.sprite.Sprite):
     def control(self):
         keys = pygame.key.get_pressed()
 
-        if keys[pygame.K_LEFT]:
-            self.vec.x += -(self.accel) * 2
-        if keys[pygame.K_RIGHT]:
-            self.vec.x += self.accel * 2
-        if keys[pygame.K_UP]:
-            self.vec.y += -(self.accel) * 2
-        if keys[pygame.K_DOWN]:
-            self.vec.y += self.accel * 2
-        # clamped_pos_x = pygame.math.clamp(self.vec.x, -self.steps, self.steps)
-        # clamped_pos_y = pygame.math.clamp(self.vec.y, -self.steps, self.steps)
-        # self.vec.x += clamped_pos_x
-        # self.vec.y += clamped_pos_y
+        horizontal_input = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
+        vertical_input = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
 
-        self.vec.x *= 0.9 if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]) else 1
-        self.vec.y *= 0.9 if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]) else 1
+        # if keys[pygame.K_LEFT]:
+        #     horizontal_input = -1
+        # if keys[pygame.K_UP]:
+        #     vertical_input = -1
+
+        self.vec.x += horizontal_input * self.accel * self.steps
+        self.vec.y += vertical_input * self.accel * self.steps
+
+        print(self.vec.x)
+
+        if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
+            if abs(self.vec.x) > 0.5:
+                self.vec.x *= 0.9
+            else:
+                self.vec.x = 0
+        if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]):
+            if abs(self.vec.y) > 0.5:
+                self.vec.y *= 0.9
+            else:
+                self.vec.y = 0
+
+        # keys[pygame.K_RIGHT] = False
+        # keys[pygame.K_DOWN] = False
+        # keys[pygame.K_LEFT] = False
+        # keys[pygame.K_UP] = False
 
     def move_rel(self, pos_rel: pygame.Vector2):
         dx = (pos_rel.x / self.steps) * self.accel
@@ -190,7 +202,7 @@ def draw_debug_menu(player: Actor, coin_sprite: Actor, pos_rel: pygame.Vector2):
     )
 
     screen.blit(
-        smaller_font.render(str(round(pos_rel.x, 1)), True, (255, 255, 255)),
+        smaller_font.render(str(abs(round(pos_rel.x, 1))), True, (255, 255, 255)),
         pygame.draw.line(
             screen,
             (255, 0, 0),
@@ -200,7 +212,7 @@ def draw_debug_menu(player: Actor, coin_sprite: Actor, pos_rel: pygame.Vector2):
     )
 
     screen.blit(
-        smaller_font.render(str(round(pos_rel.y, 1)), True, (255, 255, 255)),
+        smaller_font.render(str(abs(round(pos_rel.y, 1))), True, (255, 255, 255)),
         pygame.draw.line(
             screen,
             (255, 0, 0),
@@ -228,7 +240,7 @@ def main(fps: int = 60):
     debug = False
     while running:
         dt = clock.tick(fps) / 1000.0
-        
+
         screen.fill((59, 177, 227))
 
         pos_rel = pygame.Vector2(coin_sprite.rect.center) - pygame.Vector2(
@@ -255,6 +267,7 @@ def main(fps: int = 60):
                 event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
             ):
                 running = False
+
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     auto_move = not auto_move
