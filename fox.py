@@ -6,6 +6,7 @@ import pygame_gui
 score = 0
 
 WIDTH, HEIGHT = 800, 600
+DT_SHIFT = 10
 
 pygame.init()
 pygame.font.init()
@@ -38,7 +39,7 @@ accel_slider = pygame_gui.elements.UIHorizontalSlider(
 
 speed_slider = pygame_gui.elements.UIHorizontalSlider(
     relative_rect=screen.get_rect(),
-    value_range=(1, 40),
+    value_range=(0, 40),
     start_value=16,
     manager=manager,
 )
@@ -96,7 +97,6 @@ class Actor(pygame.sprite.Sprite):
             self.vec.y += -(self.accel) * 2
         if keys[pygame.K_DOWN]:
             self.vec.y += self.accel * 2
-
         # clamped_pos_x = pygame.math.clamp(self.vec.x, -self.steps, self.steps)
         # clamped_pos_y = pygame.math.clamp(self.vec.y, -self.steps, self.steps)
         # self.vec.x += clamped_pos_x
@@ -106,26 +106,23 @@ class Actor(pygame.sprite.Sprite):
         self.vec.y *= 0.9 if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]) else 1
 
     def move_rel(self, pos_rel: pygame.Vector2):
-        dx = pos_rel.x / self.steps * self.accel
-        dy = pos_rel.y / self.steps * self.accel
+        dx = (pos_rel.x / self.steps) * self.accel
+        dy = (pos_rel.y / self.steps) * self.accel
         self.vec.x += dx
         self.vec.y += dy
 
-    def update(self):
+    def update(self, dt: float):
         if self.vec.magnitude() >= self.steps:
             self.vec = self.vec.normalize() * self.steps
 
         self.rect.x += self.vec.x
         self.rect.y += self.vec.y
 
-        if self.vec.x < 0 and not self.has_switched_side:
+        if (self.vec.x < 0 and not self.has_switched_side) or (
+            self.vec.x > 0 and self.has_switched_side
+        ):
             self.image = pygame.transform.flip(self.image, True, False)
-            self.has_switched_side = True
-        if self.vec.x > 0 and self.has_switched_side:
-            self.image = pygame.transform.flip(self.image, True, False)
-            self.has_switched_side = False
-
-        # self.rect.clamp_ip(screen.get_rect())
+            self.has_switched_side = not self.has_switched_side
 
 
 def draw_scores():
@@ -152,9 +149,16 @@ def draw_timer():
 def draw_debug_menu(player: Actor, coin_sprite: Actor, pos_rel: pygame.Vector2):
     screen.blit(
         smaller_font.render(
-            f"pos_fox:\n{str(round(player.pos, 2))}", True, (255, 255, 255)
+            f"fps: {str(round(clock.get_fps(), 2))}", True, (255, 255, 255)
         ),
         (10, 10),
+    )
+
+    screen.blit(
+        smaller_font.render(
+            f"pos_fox:\n{str(round(player.pos, 2))}", True, (255, 255, 255)
+        ),
+        (10, 50 + smaller_font.get_height()),
     )
 
     screen.blit(
@@ -163,19 +167,19 @@ def draw_debug_menu(player: Actor, coin_sprite: Actor, pos_rel: pygame.Vector2):
             True,
             (255, 255, 255),
         ),
-        (10, 50 + smaller_font.get_height()),
+        (10, 115 + smaller_font.get_height()),
     )
 
     screen.blit(
         smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)),
-        (10, 115 + smaller_font.get_height()),
+        (10, 180 + smaller_font.get_height()),
     )
 
     screen.blit(
         smaller_font.render(
             f"vel:\n{str(round(player.vec, 2))}", True, (255, 255, 255)
         ),
-        (10, 180 + smaller_font.get_height()),
+        (10, 245 + smaller_font.get_height()),
     )
 
     screen.blit(
@@ -206,10 +210,8 @@ def draw_debug_menu(player: Actor, coin_sprite: Actor, pos_rel: pygame.Vector2):
     )
 
 
-def main():
+def main(fps: int = 60):
     global score, coin_x, coin_y, fox, coin
-
-    time_delta = clock.tick(60) / 1000.0
 
     player = Actor(fox)
     player.rect.centerx = WIDTH // 2
@@ -225,6 +227,8 @@ def main():
     done_reset = True
     debug = False
     while running:
+        dt = clock.tick(fps) / 1000.0
+        
         screen.fill((59, 177, 227))
 
         pos_rel = pygame.Vector2(coin_sprite.rect.center) - pygame.Vector2(
@@ -272,8 +276,8 @@ def main():
 
         if coin_sprite.rect.colliderect(player.rect):
             score += 1
-            coin_x = random.uniform(0, WIDTH - player.rect.x)
-            coin_y = random.uniform(0, HEIGHT - player.rect.y)
+            coin_x = random.uniform(10, WIDTH - player.rect.x + 10)
+            coin_y = random.uniform(10, HEIGHT - player.rect.y + 10)
             # if (
             #     coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
             # ) or (
@@ -283,15 +287,15 @@ def main():
             #     coin_x = random.uniform(0, WIDTH - player.rect.x - 50)
             #     coin_y = random.uniform(0, HEIGHT - player.rect.y - 50)
 
-        player.update()
-        coin_sprite.update()
+        player.update(dt)
+        coin_sprite.update(dt)
         sprites.draw(screen)
         # screen.blit(coin, coin_rect)
 
         if debug:
             draw_debug_menu(player, coin_sprite, pos_rel)
 
-        manager.update(time_delta)
+        manager.update(dt)
 
         draw_scores()
         draw_timer()
@@ -305,4 +309,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(60)
