@@ -149,12 +149,21 @@ def draw_timer():
     screen.blit(time_text, (text_x, text_y))
 
 
-def draw_debug_menu(player: Actor, coin_sprite: Actor, pos_rel: pygame.Vector2):
+def draw_debug_menu(
+    player: Actor, auto_mode_enabled: bool, coin_sprite: Actor, pos_rel: pygame.Vector2
+):
     screen.blit(
         smaller_font.render(
             f"fps: {str(round(clock.get_fps(), 2))}", True, (255, 255, 255)
         ),
         (10, 10),
+    )
+
+    screen.blit(
+        smaller_font.render(
+            f"auto_mode: {str(auto_mode_enabled)}", True, (255, 255, 255)
+        ),
+        (10, 41),
     )
 
     screen.blit(
@@ -226,7 +235,7 @@ def main(fps: int = 60):
     sprites.add(coin_sprite)
 
     running = True
-    auto_move = False
+    auto_mode = False
     done_reset = True
     debug = False
     while running:
@@ -238,7 +247,7 @@ def main(fps: int = 60):
             player.rect.center
         )
 
-        if auto_move:
+        if auto_mode:
             # mouse = pygame.mouse.get_pos()
             # player.move_rel(mouse[0], mouse[1])
             player.move_rel(pos_rel)
@@ -268,7 +277,7 @@ def main(fps: int = 60):
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    auto_move = not auto_move
+                    auto_mode = not auto_mode
                 if event.key == pygame.K_F1:
                     debug = not debug
                 if event.key == pygame.K_F2:
@@ -304,7 +313,7 @@ def main(fps: int = 60):
         # screen.blit(coin, coin_rect)
 
         if debug:
-            draw_debug_menu(player, coin_sprite, pos_rel)
+            draw_debug_menu(player, auto_mode, coin_sprite, pos_rel)
 
         manager.update(dt)
 
