@@ -91,44 +91,35 @@ class Actor(pygame.sprite.Sprite):
         horizontal_input = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
         vertical_input = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
 
-        # if keys[pygame.K_LEFT]:
-        #     horizontal_input = -1
-        # if keys[pygame.K_UP]:
-        #     vertical_input = -1
-
         self.vec.x += horizontal_input * self.accel * self.steps
         self.vec.y += vertical_input * self.accel * self.steps
 
-        print(self.vec.x)
+        # print(self.vec.x)
 
         if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
-            if abs(self.vec.x) > 0.5:
+            if abs(self.vec.x) > 0.9:
                 self.vec.x *= 0.9
             else:
                 self.vec.x = 0
         if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]):
-            if abs(self.vec.y) > 0.5:
+            if abs(self.vec.y) > 0.9:
                 self.vec.y *= 0.9
             else:
                 self.vec.y = 0
 
-        # keys[pygame.K_RIGHT] = False
-        # keys[pygame.K_DOWN] = False
-        # keys[pygame.K_LEFT] = False
-        # keys[pygame.K_UP] = False
-
     def move_rel(self, pos_rel: pygame.Vector2):
-        dx = (pos_rel.x / self.steps) * self.accel
-        dy = (pos_rel.y / self.steps) * self.accel
-        self.vec.x += dx
-        self.vec.y += dy
+        if pos_rel.magnitude() > 0:
+            self.vec.x += self.steps * self.accel * pos_rel.x / pos_rel.magnitude()
+            self.vec.y += self.steps * self.accel * pos_rel.y / pos_rel.magnitude()
 
-    def update(self, dt: float):
+    def update(self):
         if self.vec.magnitude() >= self.steps:
             self.vec = self.vec.normalize() * self.steps
 
         self.rect.x += self.vec.x
         self.rect.y += self.vec.y
+
+        self.vec *= 0.99
 
         if (self.vec.x < 0 and not self.has_switched_side) or (
             self.vec.x > 0 and self.has_switched_side
@@ -254,8 +245,15 @@ def main(fps: int = 60):
             done_reset = False
         else:
             if not done_reset:
-                player.vec.x = 0
-                player.vec.y = 0
+                if abs(player.vec.x) > 0.9:
+                    player.vec.x *= 0.9
+                else:
+                    player.vec.x = 0
+
+                if abs(player.vec.y) > 0.9:
+                    player.vec.y *= 0.9
+                else:
+                    player.vec.y = 0
                 done_reset = True
             player.control()
 
@@ -300,8 +298,8 @@ def main(fps: int = 60):
             #     coin_x = random.uniform(0, WIDTH - player.rect.x - 50)
             #     coin_y = random.uniform(0, HEIGHT - player.rect.y - 50)
 
-        player.update(dt)
-        coin_sprite.update(dt)
+        player.update()
+        coin_sprite.update()
         sprites.draw(screen)
         # screen.blit(coin, coin_rect)
 
