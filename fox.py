@@ -27,7 +27,7 @@ clock = pygame.time.Clock()
 coin_x = random.randint(0, WIDTH // 2)
 coin_y = random.randint(0, HEIGHT // 2)
 
-player_list = pygame.sprite.Group()
+sprites = pygame.sprite.Group()
 
 accel_slider = pygame_gui.elements.UIHorizontalSlider(
     relative_rect=screen.get_rect(),
@@ -72,6 +72,18 @@ class Actor(pygame.sprite.Sprite):
         self.accel = accel
         self.has_switched_side = False
         self.rect = img.get_bounding_rect()
+
+    @property
+    def pos(self) -> pygame.Vector2:
+        return pygame.Vector2(self.rect.centerx, self.rect.centery)
+
+    @pos.setter
+    def pos(self, pos: tuple[float | int, float | int]):
+        self.rect.centerx, self.rect.centery = pos
+
+    @pos.setter
+    def pos(self, pos: pygame.Vector2):
+        self.rect.centerx, self.rect.centery = pos.x, pos.y
 
     def control(self):
         keys = pygame.key.get_pressed()
@@ -124,7 +136,7 @@ def draw_scores():
 
 
 def draw_timer():
-    time_text = font.render(
+    time_text = smaller_font.render(
         "Accel: "
         + str(round(accel_slider.get_current_value(), 2))
         + " | Speed: "
@@ -133,7 +145,7 @@ def draw_timer():
         "white",
     )
     text_x = (WIDTH - time_text.get_width()) // 2
-    text_y = (HEIGHT - font.get_height()) - 100
+    text_y = (HEIGHT - smaller_font.get_height()) - 80
     screen.blit(time_text, (text_x, text_y))
 
 
@@ -148,8 +160,8 @@ def main():
 
     coin_sprite = Actor(coin)
 
-    player_list.add(player)
-    player_list.add(coin_sprite)
+    sprites.add(player)
+    sprites.add(coin_sprite)
 
     running = True
     auto_move = False
@@ -203,26 +215,49 @@ def main():
 
         if coin_sprite.rect.colliderect(player.rect):
             score += 1
-            coin_x = random.uniform(0, WIDTH - player.rect.x / 2)
-            coin_y = random.uniform(0, HEIGHT - player.rect.y / 2)
-            if (
-                coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
-            ) or (
-                coin_sprite.rect.centery <= 10
-                or coin_sprite.rect.centery >= HEIGHT - 20
-            ):
-                coin_x = random.uniform(0, WIDTH - coin_x - 50)
-                coin_y = random.uniform(0, HEIGHT - coin_y - 50)
+            coin_x = random.uniform(0, WIDTH - player.rect.x)
+            coin_y = random.uniform(0, HEIGHT - player.rect.y)
+            # if (
+            #     coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
+            # ) or (
+            #     coin_sprite.rect.centery <= 10
+            #     or coin_sprite.rect.centery >= HEIGHT - 20
+            # ):
+            #     coin_x = random.uniform(0, WIDTH - player.rect.x - 50)
+            #     coin_y = random.uniform(0, HEIGHT - player.rect.y - 50)
 
         player.update()
         coin_sprite.update()
-        player_list.draw(screen)
+        sprites.draw(screen)
         # screen.blit(coin, coin_rect)
 
         if debug:
             screen.blit(
-                smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)),
+                smaller_font.render(
+                    f"pos_fox:\n{str(round(player.pos, 2))}", True, (255, 255, 255)
+                ),
                 (10, 10),
+            )
+
+            screen.blit(
+                smaller_font.render(
+                    f"pos_coin:\n{str(round(coin_sprite.pos, 2))}",
+                    True,
+                    (255, 255, 255),
+                ),
+                (10, 50 + smaller_font.get_height()),
+            )
+
+            screen.blit(
+                smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)),
+                (10, 115 + smaller_font.get_height()),
+            )
+
+            screen.blit(
+                smaller_font.render(
+                    f"vel:\n{str(round(player.vec, 2))}", True, (255, 255, 255)
+                ),
+                (10, 180 + smaller_font.get_height()),
             )
 
             screen.blit(
@@ -231,6 +266,24 @@ def main():
                 ),
                 pygame.draw.line(
                     screen, (255, 0, 0), player.rect.center, coin_sprite.rect.center
+                ).center,
+            )
+            
+            screen.blit(
+                smaller_font.render(
+                    str(round(pos_rel.x, 1)), True, (255, 255, 255)
+                ),
+                pygame.draw.line(
+                    screen, (255, 0, 0), player.rect.center, (coin_sprite.rect.centerx, player.rect.centery)
+                ).center,
+            )
+            
+            screen.blit(
+                smaller_font.render(
+                    str(round(pos_rel.y, 1)), True, (255, 255, 255)
+                ),
+                pygame.draw.line(
+                    screen, (255, 0, 0), coin_sprite.rect.center, (coin_sprite.rect.centerx, player.rect.centery)
                 ).center,
             )
 
