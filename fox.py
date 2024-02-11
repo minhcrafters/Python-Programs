@@ -9,13 +9,13 @@ from pg_utils import draw_text, scale_image
 
 score = 0
 
-SCALE_FACTOR = 0.75
+SCALE_FACTOR = 0.5
 WIDTH, HEIGHT = 800, 600
 
 pygame.init()
 pygame.font.init()
 
-font = pygame.font.Font("./font/MinecraftBold.otf", 36)
+font = pygame.font.Font("./font/MinecraftBold.otf", 40)
 smaller_font = pygame.font.Font("./font/MinecraftRegular.otf", 20)
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
@@ -109,12 +109,12 @@ class Actor(pygame.sprite.Sprite):
         # print(self.vec.x)
 
         if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
-            if abs(self.vec.x) > 0.9:
+            if abs(self.vec.x) > 0.99:
                 self.vec.x *= 0.9
             else:
                 self.vec.x = 0
         if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]):
-            if abs(self.vec.y) > 0.9:
+            if abs(self.vec.y) > 0.99:
                 self.vec.y *= 0.9
             else:
                 self.vec.y = 0
@@ -158,7 +158,7 @@ def draw_scores():
     text = f"{score}"
     text_x = (WIDTH - font.size(text)[0]) // 2
     text_y = font.get_height() // 2
-    draw_text(screen, font, text, pos=(text_x, text_y), shadow=True, shadow_offset=2)
+    draw_text(screen, font, text, pos=(text_x, text_y), shadow=True, shadow_offset=3)
 
 
 def draw_timer(offset: int = 0):
@@ -240,7 +240,10 @@ def draw_debug_menu(
 
 
 def main(fps: int = 60):
-    global score, coin_x, coin_y, fox, coin, background, SCALE_FACTOR
+    global score, coin_x, coin_y, fox, coin, background
+
+    screen_width, screen_height = screen.get_size()
+    background_width, background_height = background.get_size()
 
     coin_collisions = 0
 
@@ -260,6 +263,7 @@ def main(fps: int = 60):
     auto_mode = False
     done_reset = True
     debug = False
+    controls_hint = True
     _counter = 1000
     coin_cps = 0
     sliders_enabled = False
@@ -269,8 +273,6 @@ def main(fps: int = 60):
         dt = t / 1000.0
 
         # screen.fill((59, 177, 227))
-        screen_width, screen_height = screen.get_size()
-        background_width, background_height = background.get_size()
 
         tiles_x = math.ceil(screen_width / background_width / SCALE_FACTOR)
         tiles_y = math.ceil(screen_height / background_height / SCALE_FACTOR)
@@ -289,12 +291,12 @@ def main(fps: int = 60):
             done_reset = False
         else:
             if not done_reset:
-                if abs(player.vec.x) > 0.9:
+                if abs(player.vec.x) > 0.99:
                     player.vec.x *= 0.9
                 else:
                     player.vec.x = 0
 
-                if abs(player.vec.y) > 0.9:
+                if abs(player.vec.y) > 0.99:
                     player.vec.y *= 0.9
                 else:
                     player.vec.y = 0
@@ -327,6 +329,8 @@ def main(fps: int = 60):
                     debug = not debug
                 if event.key == pygame.K_F2:
                     sliders_enabled = not sliders_enabled
+                if event.key == pygame.K_TAB:
+                    controls_hint = not controls_hint
 
                 if event.key == pygame.K_r:
                     player.rect.centerx = WIDTH // 2
@@ -373,11 +377,11 @@ def main(fps: int = 60):
 
         if debug:
             draw_debug_menu(player, auto_mode, coin_cps, coin_sprite, pos_rel)
-        else:
+        elif controls_hint:
             draw_text(
                 screen,
                 smaller_font,
-                "Arrow Keys: Move\nF1: Toggle debug menu\nF2: Toggle sliders\nSpace: Toggle Auto Mode\nR: Reset position\nESC: Quit",
+                "TAB: Toggle controls help menu\nArrow Keys: Move\nF2: Toggle sliders\nF3: Toggle debug menu\nSpace: Toggle Auto Mode\nR: Reset position\nESC: Quit",
                 pos=(10, 10),
                 shadow=True,
             )

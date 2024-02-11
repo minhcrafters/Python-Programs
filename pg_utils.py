@@ -18,6 +18,8 @@ def draw_text(
     anchor: str = "topleft",
     shadow: bool = False,
     shadow_offset: float = 1,
+    fade_out_when_collided: bool = False,
+    collision_rect: pygame.Rect | None = None,
 ) -> pygame.surface.Surface:
     if shadow:
         dropshadow_offset = shadow_offset + (
@@ -25,9 +27,13 @@ def draw_text(
         )
 
         text_bitmap = font.render(text, anti_aliasing, drop_colour).convert_alpha()
-        text_bitmap.set_alpha(drop_colour[3])
         rect = text_bitmap.get_rect()
         setattr(rect, anchor, pos)
+
+        if fade_out_when_collided and rect.colliderect(collision_rect):
+            text_bitmap.set_alpha(128 - drop_colour[3])
+        else:
+            text_bitmap.set_alpha(255 - drop_colour[3])
 
         screen.blit(
             text_bitmap, (rect.x + dropshadow_offset, rect.y + dropshadow_offset)
@@ -36,5 +42,11 @@ def draw_text(
     text_bitmap = font.render(text, anti_aliasing, colour)
     rect = text_bitmap.get_rect()
     setattr(rect, anchor, pos)
+
+    if fade_out_when_collided and rect.colliderect(collision_rect):
+        text_bitmap.set_alpha(128)
+    else:
+        text_bitmap.set_alpha(255)
+
     screen.blit(text_bitmap, rect)
     return text_bitmap
