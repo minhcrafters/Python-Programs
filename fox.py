@@ -2,30 +2,50 @@ import sys
 import pygame
 import random
 import pygame_gui
+import math
+
+from itertools import product
 
 score = 0
 
 WIDTH, HEIGHT = 800, 600
+SCALE_FACTOR = 0.75
 
 pygame.init()
 pygame.font.init()
 
-font = pygame.font.SysFont("Consolas", 36)
-smaller_font = pygame.font.SysFont("Consolas", 24)
+font = pygame.font.Font("./font/MinecraftBold.otf", 36)
+smaller_font = pygame.font.Font("./font/MinecraftRegular.otf", 20)
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
 pygame.display.set_caption("Coin Collector")
 
 manager = pygame_gui.UIManager((WIDTH, HEIGHT))
 
+background = pygame.image.load("./img/background.png").convert()
+
 fox = pygame.image.load("./img/fox.png").convert_alpha()
 coin = pygame.image.load("./img/coin.png").convert_alpha()
-coin = pygame.transform.scale2x(coin)
+
+background = pygame.transform.scale(
+    background,
+    (background.get_width() * SCALE_FACTOR, background.get_height() * SCALE_FACTOR),
+)
+
+fox = pygame.transform.scale(
+    fox, (fox.get_width() * SCALE_FACTOR, fox.get_height() * SCALE_FACTOR)
+)
+
+coin = pygame.transform.scale(
+    coin, (coin.get_width() * SCALE_FACTOR, coin.get_height() * SCALE_FACTOR)
+)
 
 clock = pygame.time.Clock()
 
 coin_x = random.randint(0, WIDTH // 2)
 coin_y = random.randint(0, HEIGHT // 2)
+
+pygame.time.set_timer(pygame.USEREVENT, 1000)
 
 sprites = pygame.sprite.Group()
 
@@ -38,7 +58,7 @@ accel_slider = pygame_gui.elements.UIHorizontalSlider(
 
 speed_slider = pygame_gui.elements.UIHorizontalSlider(
     relative_rect=screen.get_rect(),
-    value_range=(0, 40),
+    value_range=(0, 100),
     start_value=16,
     manager=manager,
 )
@@ -116,10 +136,12 @@ class Actor(pygame.sprite.Sprite):
         if self.vec.magnitude() >= self.steps:
             self.vec = self.vec.normalize() * self.steps
 
-        self.rect.x += self.vec.x
-        self.rect.y += self.vec.y
+        self.rect.x += self.vec.x * SCALE_FACTOR
+        self.rect.y += self.vec.y * SCALE_FACTOR
 
         self.vec *= 0.99
+
+        self.rect.clamp_ip(screen.get_rect())
 
         if (self.vec.x < 0 and not self.has_switched_side) or (
             self.vec.x > 0 and self.has_switched_side
@@ -127,103 +149,138 @@ class Actor(pygame.sprite.Sprite):
             self.image = pygame.transform.flip(self.image, True, False)
             self.has_switched_side = not self.has_switched_side
 
+        darkened_image = self.image.copy()
+        darkened_image.fill((0, 0, 0, 128), None, pygame.BLEND_RGBA_MULT)
+
+        dropshadow_offset = 2 + (
+            self.image.get_width() // (self.image.get_width() / 1.5)
+        )
+
+        screen.blit(
+            darkened_image,
+            (self.rect.x + dropshadow_offset, self.rect.y + dropshadow_offset),
+        )
+
+
+def draw_text(
+    font: pygame.font.Font,
+    text: str,
+    pos: tuple[float | int, float | int],
+    colour: tuple[int, int, int] = (255, 255, 255),
+    drop_colour: tuple[int, int, int, int] = (0, 0, 0, 128),
+    anti_aliasing: bool = False,
+    anchor: str = "topleft",
+    shadow: bool = False,
+    shadow_offset: float = 1,
+) -> pygame.surface.Surface:
+    if shadow:
+        dropshadow_offset = shadow_offset + (
+            font.size(text)[0] // (font.size(text)[0] / 1.5)
+        )
+
+        text_bitmap = font.render(text, anti_aliasing, drop_colour).convert_alpha()
+        text_bitmap.set_alpha(drop_colour[3])
+        rect = text_bitmap.get_rect()
+        setattr(rect, anchor, pos)
+
+        screen.blit(
+            text_bitmap, (rect.x + dropshadow_offset, rect.y + dropshadow_offset)
+        )
+
+    text_bitmap = font.render(text, anti_aliasing, colour)
+    rect = text_bitmap.get_rect()
+    setattr(rect, anchor, pos)
+    screen.blit(text_bitmap, rect)
+    return text_bitmap
+
 
 def draw_scores():
-    score_text = font.render("Score: " + str(score), True, "white")
-    text_x = (WIDTH - score_text.get_width()) // 2
+    text = f"{score}"
+    text_x = (WIDTH - font.size(text)[0]) // 2
     text_y = font.get_height() // 2
-    screen.blit(score_text, (text_x, text_y))
+    draw_text(font, text, pos=(text_x, text_y), shadow=True, shadow_offset=2)
 
 
-def draw_timer():
-    time_text = smaller_font.render(
-        "Accel: "
-        + str(round(accel_slider.get_current_value(), 2))
-        + " | Speed: "
-        + str(speed_slider.get_current_value()),
-        True,
-        "white",
+def draw_timer(offset: int = 0):
+    text = f"Accel: {round(accel_slider.get_current_value(), 2)} | Speed: {speed_slider.get_current_value()}"
+    text_x = (WIDTH - smaller_font.size(text)[0]) // 2
+    text_y = (HEIGHT - smaller_font.get_height()) - 80 + offset
+    draw_text(
+        smaller_font,
+        f"Accel: {round(accel_slider.get_current_value(), 2)} | Speed: {speed_slider.get_current_value()}",
+        pos=(text_x, text_y),
+        shadow=True,
     )
-    text_x = (WIDTH - time_text.get_width()) // 2
-    text_y = (HEIGHT - smaller_font.get_height()) - 80
-    screen.blit(time_text, (text_x, text_y))
 
 
 def draw_debug_menu(
-    player: Actor, auto_mode_enabled: bool, coin_sprite: Actor, pos_rel: pygame.Vector2
+    player: Actor,
+    auto_mode_enabled: bool,
+    coin_collisions: int,
+    coin_sprite: Actor,
+    pos_rel: pygame.Vector2,
 ):
-    screen.blit(
-        smaller_font.render(
-            f"fps: {str(round(clock.get_fps(), 2))}", True, (255, 255, 255)
-        ),
+    debug_texts = [
+        f"fps: {round(clock.get_fps(), 2)}",
+        f"auto_mode: {auto_mode_enabled}",
+        f"pos_fox:\n{round(player.pos, 2)}",
+        f"pos_coin:\n{round(coin_sprite.pos, 2)}",
+        f"pos_rel:\n{pos_rel}",
+        f"vel:\n{round(player.vec, 2)}",
+        f"coins/sec: {round(coin_collisions, 1)}",
+        f"{round(pos_rel.magnitude(), 1)}",
+        f"{abs(pos_rel.x)}",
+        f"{abs(pos_rel.y)}",
+    ]
+
+    x_line = pygame.draw.line(
+        screen,
+        (255, 0, 0),
+        player.rect.center,
+        (coin_sprite.rect.centerx, player.rect.centery),
+    )
+
+    y_line = pygame.draw.line(
+        screen,
+        (255, 0, 0),
+        coin_sprite.rect.center,
+        (coin_sprite.rect.centerx, player.rect.centery),
+    )
+
+    positions = [
         (10, 10),
-    )
-
-    screen.blit(
-        smaller_font.render(
-            f"auto_mode: {str(auto_mode_enabled)}", True, (255, 255, 255)
-        ),
-        (10, 41),
-    )
-
-    screen.blit(
-        smaller_font.render(
-            f"pos_fox:\n{str(round(player.pos, 2))}", True, (255, 255, 255)
-        ),
+        (10, 40),
         (10, 50 + smaller_font.get_height()),
-    )
-
-    screen.blit(
-        smaller_font.render(
-            f"pos_coin:\n{str(round(coin_sprite.pos, 2))}",
-            True,
-            (255, 255, 255),
-        ),
         (10, 115 + smaller_font.get_height()),
-    )
-
-    screen.blit(
-        smaller_font.render(f"pos_rel:\n{str(pos_rel)}", True, (255, 255, 255)),
         (10, 180 + smaller_font.get_height()),
-    )
-
-    screen.blit(
-        smaller_font.render(
-            f"vel:\n{str(round(player.vec, 2))}", True, (255, 255, 255)
-        ),
         (10, 245 + smaller_font.get_height()),
-    )
-
-    screen.blit(
-        smaller_font.render(str(round(pos_rel.magnitude(), 1)), True, (255, 255, 255)),
+        (10, 310 + smaller_font.get_height()),
         pygame.draw.line(
             screen, (255, 0, 0), player.rect.center, coin_sprite.rect.center
         ).center,
-    )
+        (
+            x_line.centerx - smaller_font.size(f"{abs(pos_rel.x)}")[0] / 2,
+            x_line.centery,
+        ),
+        (
+            y_line.centerx - smaller_font.size(f"{abs(pos_rel.y)}")[0],
+            y_line.centery - smaller_font.size(f"{abs(pos_rel.y)}")[1] / 2,
+        ),
+    ]
 
-    screen.blit(
-        smaller_font.render(str(abs(round(pos_rel.x, 1))), True, (255, 255, 255)),
-        pygame.draw.line(
-            screen,
-            (255, 0, 0),
-            player.rect.center,
-            (coin_sprite.rect.centerx, player.rect.centery),
-        ).center,
-    )
-
-    screen.blit(
-        smaller_font.render(str(abs(round(pos_rel.y, 1))), True, (255, 255, 255)),
-        pygame.draw.line(
-            screen,
-            (255, 0, 0),
-            coin_sprite.rect.center,
-            (coin_sprite.rect.centerx, player.rect.centery),
-        ).center,
-    )
+    for text, pos in zip(debug_texts, positions):
+        draw_text(
+            text=text,
+            font=smaller_font,
+            pos=pos,
+            shadow=True,
+        )
 
 
 def main(fps: int = 60):
     global score, coin_x, coin_y, fox, coin
+
+    coin_collisions = 0
 
     player = Actor(fox)
     player.rect.centerx = WIDTH // 2
@@ -234,14 +291,30 @@ def main(fps: int = 60):
     sprites.add(player)
     sprites.add(coin_sprite)
 
+    start_time = pygame.time.get_ticks()
+    passed_time = 1
+
     running = True
     auto_mode = False
     done_reset = True
     debug = False
-    while running:
-        dt = clock.tick(fps) / 1000.0
+    _counter = 1000
+    coin_cps = 0
+    sliders_enabled = False
 
-        screen.fill((59, 177, 227))
+    while running:
+        t = clock.tick(fps)
+        dt = t / 1000.0
+
+        # screen.fill((59, 177, 227))
+        screen_width, screen_height = screen.get_size()
+        background_width, background_height = background.get_size()
+
+        tiles_x = math.ceil(screen_width / background_width / SCALE_FACTOR)
+        tiles_y = math.ceil(screen_height / background_height / SCALE_FACTOR)
+
+        for x, y in product(range(tiles_x), range(tiles_y)):
+            screen.blit(background, (x * background_width, y * background_height))
 
         pos_rel = pygame.Vector2(coin_sprite.rect.center) - pygame.Vector2(
             player.rect.center
@@ -268,6 +341,16 @@ def main(fps: int = 60):
 
         # coin_sprite.control()
 
+        _counter -= t
+        if _counter < 0:
+            passed_time = pygame.math.clamp(
+                passed_time, 1, (pygame.time.get_ticks() - start_time) / 1000
+            )
+            coin_cps = coin_collisions / passed_time
+            coin_collisions = 0
+            start_time = pygame.time.get_ticks()
+            _counter += 1000
+
         events = pygame.event.get()
         for event in events:
             if event.type == pygame.QUIT or (
@@ -281,6 +364,8 @@ def main(fps: int = 60):
                 if event.key == pygame.K_F1:
                     debug = not debug
                 if event.key == pygame.K_F2:
+                    sliders_enabled = not sliders_enabled
+                if event.key == pygame.K_r:
                     player.rect.centerx = WIDTH // 2
                     player.rect.centery = HEIGHT // 2
 
@@ -296,8 +381,19 @@ def main(fps: int = 60):
 
         if coin_sprite.rect.colliderect(player.rect):
             score += 1
-            coin_x = random.uniform(10, WIDTH - player.rect.x + 10)
-            coin_y = random.uniform(10, HEIGHT - player.rect.y + 10)
+            coin_collisions += 1
+            coin_x = random.uniform(
+                60,
+                WIDTH
+                - player.rect.x
+                + (-20 if coin_sprite.rect.x > WIDTH // 2 else 20),
+            )
+            coin_y = random.uniform(
+                60,
+                HEIGHT
+                - player.rect.y
+                + (-20 if coin_sprite.rect.y > HEIGHT // 2 else 20),
+            )
             # if (
             #     coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
             # ) or (
@@ -313,14 +409,23 @@ def main(fps: int = 60):
         # screen.blit(coin, coin_rect)
 
         if debug:
-            draw_debug_menu(player, auto_mode, coin_sprite, pos_rel)
+            draw_debug_menu(player, auto_mode, coin_cps, coin_sprite, pos_rel)
+        else:
+            draw_text(
+                smaller_font,
+                "Arrow Keys: Move\nF1: Toggle debug menu\nF2: Toggle sliders\nSpace: Toggle Auto Mode\nR: Reset position\nESC: Quit",
+                pos=(10, 10),
+                shadow=True,
+            )
 
         manager.update(dt)
 
         draw_scores()
-        draw_timer()
 
-        manager.draw_ui(screen)
+        draw_timer(70 if not sliders_enabled else 0)
+
+        if sliders_enabled:
+            manager.draw_ui(screen)
 
         pygame.display.flip()
 
