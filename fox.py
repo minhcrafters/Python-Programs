@@ -431,6 +431,8 @@ def main(fps: int = 60):
 
         coin_sprite.rect.center = (coin_x, coin_y)
         # coin_sprite.rect.center = pygame.mouse.get_pos()
+        coin_sprite.rect.center = (coin_x, coin_y)
+        # coin_sprite.rect.center = pygame.mouse.get_pos()
 
         if coin_sprite.rect.colliderect(player.rect):
             score += 1
