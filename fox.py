@@ -51,7 +51,7 @@ accel_slider = pygame_gui.elements.UIHorizontalSlider(
 speed_slider = pygame_gui.elements.UIHorizontalSlider(
     relative_rect=screen.get_rect(),
     value_range=(0, 100),
-    start_value=16,
+    start_value=20,
     manager=manager,
 )
 
@@ -247,7 +247,12 @@ def main(fps: int = 60):
 
     coin_collisions = 0
 
-    player = Actor(fox)
+    player = Actor(
+        fox,
+        accel=accel_slider.get_current_value(),
+        steps=speed_slider.get_current_value(),
+    )
+    
     player.rect.centerx = WIDTH // 2
     player.rect.centery = HEIGHT // 2
 
@@ -344,7 +349,8 @@ def main(fps: int = 60):
 
             manager.process_events(event)
 
-        coin_sprite.rect.topleft = (coin_x, coin_y)
+        coin_sprite.rect.center = (coin_x, coin_y)
+        # coin_sprite.rect.center = pygame.mouse.get_pos()
 
         if coin_sprite.rect.colliderect(player.rect):
             score += 1
