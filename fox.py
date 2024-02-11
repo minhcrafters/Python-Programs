@@ -14,6 +14,11 @@ WIDTH, HEIGHT = 800, 600
 
 pygame.init()
 pygame.font.init()
+pygame.joystick.init()
+
+controllers: dict[int, pygame.joystick.Joystick] = {}
+controller_deadzone: float = 0.075
+
 
 font = pygame.font.Font("./font/MinecraftBold.otf", 40)
 smaller_font = pygame.font.Font("./font/MinecraftRegular.otf", 20)
@@ -51,7 +56,7 @@ accel_slider = pygame_gui.elements.UIHorizontalSlider(
 speed_slider = pygame_gui.elements.UIHorizontalSlider(
     relative_rect=screen.get_rect(),
     value_range=(0, 100),
-    start_value=16,
+    start_value=20,
     manager=manager,
 )
 
@@ -97,27 +102,51 @@ class Actor(pygame.sprite.Sprite):
     def pos(self, pos: pygame.Vector2):
         self.rect.centerx, self.rect.centery = pos.x, pos.y
 
-    def control(self):
+    def control(self, controller_mode: bool = False):
         keys = pygame.key.get_pressed()
 
-        horizontal_input = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
-        vertical_input = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
+        if controller_mode:
+            horizontal_input = (
+                controllers[0].get_axis(0)
+                if abs(controllers[0].get_axis(0)) >= controller_deadzone
+                else 0
+            )
+            vertical_input = (
+                controllers[0].get_axis(1)
+                if abs(controllers[0].get_axis(1)) >= controller_deadzone
+                else 0
+            )
+        else:
+            horizontal_input = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
+            vertical_input = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
 
         self.vec.x += horizontal_input * self.accel * self.steps
         self.vec.y += vertical_input * self.accel * self.steps
 
         # print(self.vec.x)
 
-        if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
-            if abs(self.vec.x) > 0.99:
-                self.vec.x *= 0.9
-            else:
-                self.vec.x = 0
-        if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]):
-            if abs(self.vec.y) > 0.99:
-                self.vec.y *= 0.9
-            else:
-                self.vec.y = 0
+        if controller_mode:
+            if abs(controllers[0].get_axis(0)) <= controller_deadzone:
+                if abs(self.vec.x) > 0.99:
+                    self.vec.x *= 0.9
+                else:
+                    self.vec.x = 0
+            if abs(controllers[0].get_axis(1)) <= controller_deadzone:
+                if abs(self.vec.y) > 0.99:
+                    self.vec.y *= 0.9
+                else:
+                    self.vec.y = 0
+        else:
+            if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
+                if abs(self.vec.x) > 0.99:
+                    self.vec.x *= 0.9
+                else:
+                    self.vec.x = 0
+            if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]):
+                if abs(self.vec.y) > 0.99:
+                    self.vec.y *= 0.9
+                else:
+                    self.vec.y = 0
 
     def move_rel(self, pos_rel: pygame.Vector2):
         if pos_rel.magnitude() > 0:
@@ -247,7 +276,12 @@ def main(fps: int = 60):
 
     coin_collisions = 0
 
-    player = Actor(fox)
+    player = Actor(
+        fox,
+        accel=accel_slider.get_current_value(),
+        steps=speed_slider.get_current_value(),
+    )
+
     player.rect.centerx = WIDTH // 2
     player.rect.centery = HEIGHT // 2
 
@@ -267,6 +301,7 @@ def main(fps: int = 60):
     _counter = 1000
     coin_cps = 0
     sliders_enabled = False
+    controller_mode = False
 
     while running:
         t = clock.tick(fps)
@@ -283,6 +318,9 @@ def main(fps: int = 60):
         pos_rel = pygame.Vector2(coin_sprite.rect.center) - pygame.Vector2(
             player.rect.center
         )
+        
+        accel_slider.set_current_value(player.accel)
+        speed_slider.set_current_value(player.steps)
 
         if auto_mode:
             # mouse = pygame.mouse.get_pos()
@@ -301,7 +339,7 @@ def main(fps: int = 60):
                 else:
                     player.vec.y = 0
                 done_reset = True
-            player.control()
+            player.control(controller_mode=controller_mode)
 
         # coin_sprite.control()
 
@@ -322,7 +360,54 @@ def main(fps: int = 60):
             ):
                 running = False
 
+            if event.type == pygame.JOYDEVICEADDED:
+                joy = pygame.joystick.Joystick(event.device_index)
+                controllers[joy.get_instance_id()] = joy
+                print(f"Joystick {joy.get_instance_id()} connected")
+
+            if event.type == pygame.JOYDEVICEREMOVED:
+                del controllers[event.instance_id]
+                print(f"Joystick {event.instance_id} disconnected")
+
+            if event.type in (
+                pygame.JOYAXISMOTION,
+                pygame.JOYBALLMOTION,
+                pygame.JOYBUTTONDOWN,
+                pygame.JOYBUTTONUP,
+                pygame.JOYHATMOTION,
+            ):
+                if (
+                    abs(controllers.get(event.instance_id).get_axis(0))
+                    >= controller_deadzone
+                    and abs(controllers.get(event.instance_id).get_axis(1))
+                    >= controller_deadzone
+                ):
+                    if not controller_mode:
+                        controller_mode = True
+
+            if event.type == pygame.JOYBUTTONDOWN:
+                if controller_mode:
+                    if event.button == 2:
+                        debug = not debug
+                    if event.button == 3:
+                        auto_mode = not auto_mode
+                    if event.button == 6:
+                        controls_hint = not controls_hint
+                    if event.button == 7:
+                        player.rect.centerx = WIDTH // 2
+                        player.rect.centery = HEIGHT // 2
+                    if event.button == 11:
+                        player.steps += 1
+                    if event.button == 12:
+                        player.steps -= 1
+                    if event.button == 13:
+                        player.accel -= 0.05
+                    if event.button == 14:
+                        player.accel += 0.05
+
             if event.type == pygame.KEYDOWN:
+                if controller_mode:
+                    controller_mode = False
                 if event.key == pygame.K_SPACE:
                     auto_mode = not auto_mode
                 if event.key == pygame.K_F3:
@@ -344,7 +429,8 @@ def main(fps: int = 60):
 
             manager.process_events(event)
 
-        coin_sprite.rect.topleft = (coin_x, coin_y)
+        coin_sprite.rect.center = (coin_x, coin_y)
+        # coin_sprite.rect.center = pygame.mouse.get_pos()
 
         if coin_sprite.rect.colliderect(player.rect):
             score += 1
@@ -375,13 +461,23 @@ def main(fps: int = 60):
         sprites.draw(screen)
         # screen.blit(coin, coin_rect)
 
+        controls_hint_texts = [
+            f"{"TAB" if not controller_mode else 'Options'}: Toggle controls",
+            f"{"Arrow Keys" if not controller_mode else 'Left Stick'}: Move",
+            f"{"R" if not controller_mode else 'Left Stick In'}: Reset position",
+            f"{"F2: Toggle sliders" if not controller_mode else 'D-pad U/D: Change speed\nD-pad L/R: Change acceleration'}",
+            f"{"F3" if not controller_mode else 'Square'}: Toggle debug menu",
+            f"{"Space" if not controller_mode else 'Triangle'}: Toggle Auto Mode",
+            "ESC: Quit",
+        ]
+
         if debug:
             draw_debug_menu(player, auto_mode, coin_cps, coin_sprite, pos_rel)
         elif controls_hint:
             draw_text(
                 screen,
                 smaller_font,
-                "TAB: Toggle controls help menu\nArrow Keys: Move\nF2: Toggle sliders\nF3: Toggle debug menu\nSpace: Toggle Auto Mode\nR: Reset position\nESC: Quit",
+                "\n".join(controls_hint_texts),
                 pos=(10, 10),
                 shadow=True,
             )
