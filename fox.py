@@ -5,11 +5,12 @@ import pygame_gui
 import math
 
 from itertools import product
+from pg_utils import draw_text, scale_image
 
 score = 0
 
-WIDTH, HEIGHT = 800, 600
 SCALE_FACTOR = 0.75
+WIDTH, HEIGHT = 800, 600
 
 pygame.init()
 pygame.font.init()
@@ -27,18 +28,9 @@ background = pygame.image.load("./img/background.png").convert()
 fox = pygame.image.load("./img/fox.png").convert_alpha()
 coin = pygame.image.load("./img/coin.png").convert_alpha()
 
-background = pygame.transform.scale(
-    background,
-    (background.get_width() * SCALE_FACTOR, background.get_height() * SCALE_FACTOR),
-)
-
-fox = pygame.transform.scale(
-    fox, (fox.get_width() * SCALE_FACTOR, fox.get_height() * SCALE_FACTOR)
-)
-
-coin = pygame.transform.scale(
-    coin, (coin.get_width() * SCALE_FACTOR, coin.get_height() * SCALE_FACTOR)
-)
+background = scale_image(background, SCALE_FACTOR)
+fox = scale_image(fox, SCALE_FACTOR)
+coin = scale_image(coin, SCALE_FACTOR)
 
 clock = pygame.time.Clock()
 
@@ -162,43 +154,11 @@ class Actor(pygame.sprite.Sprite):
         )
 
 
-def draw_text(
-    font: pygame.font.Font,
-    text: str,
-    pos: tuple[float | int, float | int],
-    colour: tuple[int, int, int] = (255, 255, 255),
-    drop_colour: tuple[int, int, int, int] = (0, 0, 0, 128),
-    anti_aliasing: bool = False,
-    anchor: str = "topleft",
-    shadow: bool = False,
-    shadow_offset: float = 1,
-) -> pygame.surface.Surface:
-    if shadow:
-        dropshadow_offset = shadow_offset + (
-            font.size(text)[0] // (font.size(text)[0] / 1.5)
-        )
-
-        text_bitmap = font.render(text, anti_aliasing, drop_colour).convert_alpha()
-        text_bitmap.set_alpha(drop_colour[3])
-        rect = text_bitmap.get_rect()
-        setattr(rect, anchor, pos)
-
-        screen.blit(
-            text_bitmap, (rect.x + dropshadow_offset, rect.y + dropshadow_offset)
-        )
-
-    text_bitmap = font.render(text, anti_aliasing, colour)
-    rect = text_bitmap.get_rect()
-    setattr(rect, anchor, pos)
-    screen.blit(text_bitmap, rect)
-    return text_bitmap
-
-
 def draw_scores():
     text = f"{score}"
     text_x = (WIDTH - font.size(text)[0]) // 2
     text_y = font.get_height() // 2
-    draw_text(font, text, pos=(text_x, text_y), shadow=True, shadow_offset=2)
+    draw_text(screen, font, text, pos=(text_x, text_y), shadow=True, shadow_offset=2)
 
 
 def draw_timer(offset: int = 0):
@@ -206,6 +166,7 @@ def draw_timer(offset: int = 0):
     text_x = (WIDTH - smaller_font.size(text)[0]) // 2
     text_y = (HEIGHT - smaller_font.get_height()) - 80 + offset
     draw_text(
+        screen,
         smaller_font,
         f"Accel: {round(accel_slider.get_current_value(), 2)} | Speed: {speed_slider.get_current_value()}",
         pos=(text_x, text_y),
@@ -270,6 +231,7 @@ def draw_debug_menu(
 
     for text, pos in zip(debug_texts, positions):
         draw_text(
+            screen,
             text=text,
             font=smaller_font,
             pos=pos,
@@ -278,7 +240,7 @@ def draw_debug_menu(
 
 
 def main(fps: int = 60):
-    global score, coin_x, coin_y, fox, coin
+    global score, coin_x, coin_y, fox, coin, background, SCALE_FACTOR
 
     coin_collisions = 0
 
@@ -361,10 +323,11 @@ def main(fps: int = 60):
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     auto_mode = not auto_mode
-                if event.key == pygame.K_F1:
+                if event.key == pygame.K_F3:
                     debug = not debug
                 if event.key == pygame.K_F2:
                     sliders_enabled = not sliders_enabled
+
                 if event.key == pygame.K_r:
                     player.rect.centerx = WIDTH // 2
                     player.rect.centery = HEIGHT // 2
@@ -412,6 +375,7 @@ def main(fps: int = 60):
             draw_debug_menu(player, auto_mode, coin_cps, coin_sprite, pos_rel)
         else:
             draw_text(
+                screen,
                 smaller_font,
                 "Arrow Keys: Move\nF1: Toggle debug menu\nF2: Toggle sliders\nSpace: Toggle Auto Mode\nR: Reset position\nESC: Quit",
                 pos=(10, 10),
