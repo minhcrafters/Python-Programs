@@ -5,11 +5,12 @@ import pygame_gui
 import math
 
 from itertools import product
-from pg_utils import draw_text, scale_image
+from pygame.math import Vector2
+from pg_utils import draw_text, scale_image, ease_in_out_quad
 
 score = 0
 
-SCALE_FACTOR = 0.5
+SCALE_FACTOR = 0.75
 WIDTH, HEIGHT = 800, 600
 
 pygame.init()
@@ -18,7 +19,6 @@ pygame.joystick.init()
 
 controllers: dict[int, pygame.joystick.Joystick] = {}
 controller_deadzone: float = 0.075
-
 
 font = pygame.font.Font("./font/MinecraftBold.otf", 40)
 smaller_font = pygame.font.Font("./font/MinecraftRegular.otf", 20)
@@ -30,19 +30,19 @@ manager = pygame_gui.UIManager((WIDTH, HEIGHT))
 
 background = pygame.image.load("./img/background.png").convert()
 
-fox = pygame.image.load("./img/fox.png").convert_alpha()
-coin = pygame.image.load("./img/coin.png").convert_alpha()
+player_image = pygame.image.load("./img/fox.png").convert_alpha()
+coin_image = pygame.image.load("./img/coin.png").convert_alpha()
+ball_image = pygame.image.load("./img/ball.png").convert_alpha()
 
 background = scale_image(background, SCALE_FACTOR)
-fox = scale_image(fox, SCALE_FACTOR)
-coin = scale_image(coin, SCALE_FACTOR)
+player_image = scale_image(player_image, SCALE_FACTOR)
+coin_image = scale_image(coin_image, SCALE_FACTOR)
+ball_image = scale_image(ball_image, 0.1 * SCALE_FACTOR)
 
 clock = pygame.time.Clock()
 
-coin_x = random.randint(0, WIDTH // 2)
-coin_y = random.randint(0, HEIGHT // 2)
-
-pygame.time.set_timer(pygame.USEREVENT, 1000)
+coin_x = random.uniform(0, WIDTH / 2)
+coin_y = random.uniform(0, HEIGHT / 2)
 
 sprites = pygame.sprite.Group()
 
@@ -55,7 +55,7 @@ accel_slider = pygame_gui.elements.UIHorizontalSlider(
 
 speed_slider = pygame_gui.elements.UIHorizontalSlider(
     relative_rect=screen.get_rect(),
-    value_range=(0, 100),
+    value_range=(1, 100),
     start_value=20,
     manager=manager,
 )
@@ -85,21 +85,22 @@ class Actor(pygame.sprite.Sprite):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.steps = steps
-        self.vec = pygame.Vector2()
+        self.vel = Vector2()
         self.accel = accel
+        self.bouncy = 0.05
         self.has_switched_side = False
         self.rect = img.get_bounding_rect()
 
     @property
-    def pos(self) -> pygame.Vector2:
-        return pygame.Vector2(self.rect.centerx, self.rect.centery)
+    def pos(self) -> Vector2:
+        return Vector2(self.rect.centerx, self.rect.centery)
 
     @pos.setter
     def pos(self, pos: tuple[float | int, float | int]):
         self.rect.centerx, self.rect.centery = pos
 
     @pos.setter
-    def pos(self, pos: pygame.Vector2):
+    def pos(self, pos: Vector2):
         self.rect.centerx, self.rect.centery = pos.x, pos.y
 
     def control(self, controller_mode: bool = False):
@@ -120,52 +121,60 @@ class Actor(pygame.sprite.Sprite):
             horizontal_input = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
             vertical_input = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
 
-        self.vec.x += horizontal_input * self.accel * self.steps
-        self.vec.y += vertical_input * self.accel * self.steps
+        self.vel.x += horizontal_input * self.accel * self.steps
+        self.vel.y += vertical_input * self.accel * self.steps
 
         # print(self.vec.x)
 
         if controller_mode:
             if abs(controllers[0].get_axis(0)) <= controller_deadzone:
-                if abs(self.vec.x) > 0.99:
-                    self.vec.x *= 0.9
+                if abs(self.vel.x) > 0.99:
+                    self.vel.x *= 0.9
                 else:
-                    self.vec.x = 0
+                    self.vel.x = 0
             if abs(controllers[0].get_axis(1)) <= controller_deadzone:
-                if abs(self.vec.y) > 0.99:
-                    self.vec.y *= 0.9
+                if abs(self.vel.y) > 0.99:
+                    self.vel.y *= 0.9
                 else:
-                    self.vec.y = 0
+                    self.vel.y = 0
         else:
             if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
-                if abs(self.vec.x) > 0.99:
-                    self.vec.x *= 0.9
+                if abs(self.vel.x) > 0.99:
+                    self.vel.x *= 0.9
                 else:
-                    self.vec.x = 0
+                    self.vel.x = 0
             if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]):
-                if abs(self.vec.y) > 0.99:
-                    self.vec.y *= 0.9
+                if abs(self.vel.y) > 0.99:
+                    self.vel.y *= 0.9
                 else:
-                    self.vec.y = 0
+                    self.vel.y = 0
 
-    def move_rel(self, pos_rel: pygame.Vector2):
+    def move_rel(self, pos_rel: Vector2):
         if pos_rel.magnitude() > 0:
-            self.vec.x += self.steps * self.accel * pos_rel.x / pos_rel.magnitude()
-            self.vec.y += self.steps * self.accel * pos_rel.y / pos_rel.magnitude()
+            self.vel.x += self.steps * self.accel * (pos_rel.x / pos_rel.magnitude())
+            self.vel.y += self.steps * self.accel * (pos_rel.y / pos_rel.magnitude())
 
     def update(self):
-        if self.vec.magnitude() >= self.steps:
-            self.vec = self.vec.normalize() * self.steps
+        if self.vel.magnitude() >= self.steps:
+            self.vel = self.vel.normalize() * self.steps
 
-        self.rect.x += self.vec.x * SCALE_FACTOR
-        self.rect.y += self.vec.y * SCALE_FACTOR
+        self.vel *= 0.99
 
-        self.vec *= 0.99
+        self.rect.x += self.vel.x * SCALE_FACTOR
+        self.rect.y += self.vel.y * SCALE_FACTOR
+
+        if self.vel.x > self.steps:
+            self.vel.x = -self.vel.x + self.bouncy * self.vel.x
+            self.vel.x = self.steps
+
+        if self.vel.y > self.steps:
+            self.vel.y = -self.vel.y + self.bouncy * self.vel.y
+            self.vel.y = self.steps
 
         self.rect.clamp_ip(screen.get_rect())
 
-        if (self.vec.x < 0 and not self.has_switched_side) or (
-            self.vec.x > 0 and self.has_switched_side
+        if (self.vel.x < 0 and not self.has_switched_side) or (
+            self.vel.x > 0 and self.has_switched_side
         ):
             self.image = pygame.transform.flip(self.image, True, False)
             self.has_switched_side = not self.has_switched_side
@@ -197,7 +206,7 @@ def draw_timer(offset: int = 0):
     draw_text(
         screen,
         smaller_font,
-        f"Accel: {round(accel_slider.get_current_value(), 2)} | Speed: {speed_slider.get_current_value()}",
+        text,
         pos=(text_x, text_y),
         shadow=True,
     )
@@ -208,15 +217,15 @@ def draw_debug_menu(
     auto_mode_enabled: bool,
     coin_collisions: int,
     coin_sprite: Actor,
-    pos_rel: pygame.Vector2,
+    pos_rel: Vector2,
 ):
     debug_texts = [
         f"fps: {round(clock.get_fps(), 2)}",
         f"auto_mode: {auto_mode_enabled}",
-        f"pos_fox:\n{round(player.pos, 2)}",
+        f"pos_player:\n{round(player.pos, 2)}",
         f"pos_coin:\n{round(coin_sprite.pos, 2)}",
         f"pos_rel:\n{pos_rel}",
-        f"vel:\n{round(player.vec, 2)}",
+        f"vel:\n{round(player.vel, 2)}",
         f"coins/sec: {round(coin_collisions, 1)}",
         f"{round(pos_rel.magnitude(), 1)}",
         f"{abs(pos_rel.x)}",
@@ -269,7 +278,7 @@ def draw_debug_menu(
 
 
 def main(fps: int = 60):
-    global score, coin_x, coin_y, fox, coin, background
+    global score, coin_x, coin_y, player_image, coin_image, background
 
     screen_width, screen_height = screen.get_size()
     background_width, background_height = background.get_size()
@@ -277,7 +286,7 @@ def main(fps: int = 60):
     coin_collisions = 0
 
     player = Actor(
-        fox,
+        player_image,
         accel=accel_slider.get_current_value(),
         steps=speed_slider.get_current_value(),
     )
@@ -285,10 +294,16 @@ def main(fps: int = 60):
     player.rect.centerx = WIDTH // 2
     player.rect.centery = HEIGHT // 2
 
-    coin_sprite = Actor(coin)
+    coin = Actor(coin_image)
+
+    # ball_obj = Actor(ball_image, steps=speed_slider.get_current_value())
+
+    # ball_obj.rect.centerx = random.randint(0, WIDTH)
+    # ball_obj.rect.centery = random.randint(0, HEIGHT)
 
     sprites.add(player)
-    sprites.add(coin_sprite)
+    sprites.add(coin)
+    # sprites.add(ball_obj)
 
     start_time = pygame.time.get_ticks()
     passed_time = 1
@@ -315,29 +330,38 @@ def main(fps: int = 60):
         for x, y in product(range(tiles_x), range(tiles_y)):
             screen.blit(background, (x * background_width, y * background_height))
 
-        pos_rel = pygame.Vector2(coin_sprite.rect.center) - pygame.Vector2(
-            player.rect.center
-        )
-        
+        pos_rel = Vector2(coin.rect.center) - Vector2(player.rect.center)
+
         accel_slider.set_current_value(player.accel)
         speed_slider.set_current_value(player.steps)
+
+        if player.rect.left <= 0 or player.rect.right >= WIDTH:
+            player.vel.x = -player.vel.x
+        if player.rect.top <= 0 or player.rect.bottom >= HEIGHT:
+            player.vel.y = -player.vel.y
+
+        # if ball_obj.rect.left <= 0 or ball_obj.rect.right >= WIDTH:
+        #     ball_obj.vel.x = -ball_obj.vel.x
+        # if ball_obj.rect.top <= 0 or ball_obj.rect.bottom >= HEIGHT:
+        #     ball_obj.vel.y = -ball_obj.vel.y
 
         if auto_mode:
             # mouse = pygame.mouse.get_pos()
             # player.move_rel(mouse[0], mouse[1])
             player.move_rel(pos_rel)
+            # ball_obj.move_rel(pos_rel_ball)
             done_reset = False
         else:
             if not done_reset:
-                if abs(player.vec.x) > 0.99:
-                    player.vec.x *= 0.9
+                if abs(player.vel.x) > 0.99:
+                    player.vel.x *= 0.9
                 else:
-                    player.vec.x = 0
+                    player.vel.x = 0
 
-                if abs(player.vec.y) > 0.99:
-                    player.vec.y *= 0.9
+                if abs(player.vel.y) > 0.99:
+                    player.vel.y *= 0.9
                 else:
-                    player.vec.y = 0
+                    player.vel.y = 0
                 done_reset = True
             player.control(controller_mode=controller_mode)
 
@@ -353,6 +377,12 @@ def main(fps: int = 60):
             start_time = pygame.time.get_ticks()
             _counter += 1000
 
+        normalized = (
+            player.vel.normalize()
+            if (player.vel.x, player.vel.y) > (0, 0)
+            else player.vel
+        )
+
         events = pygame.event.get()
         for event in events:
             if event.type == pygame.QUIT or (
@@ -366,8 +396,10 @@ def main(fps: int = 60):
                 print(f"Joystick {joy.get_instance_id()} connected")
 
             if event.type == pygame.JOYDEVICEREMOVED:
-                del controllers[event.instance_id]
-                print(f"Joystick {event.instance_id} disconnected")
+                if event.instance_id:
+                    controller_mode = False
+                    del controllers[event.instance_id]
+                    print(f"Joystick {event.instance_id} disconnected")
 
             if event.type in (
                 pygame.JOYAXISMOTION,
@@ -428,27 +460,33 @@ def main(fps: int = 60):
                     player.steps = event.value
 
             manager.process_events(event)
+        
+        # ball_obj.vel.y += 1
+        
+        # if player.rect.colliderect(ball_obj.rect):
+        #     print("hit")
+        #     pos = Vector2(ball_obj.rect.center) - Vector2(player.rect.center)
+        #     v1 = ball_obj.vel.reflect(pos) * 2
+        #     # v2 = player.vel.reflect(-pos)
+        #     print(v1)
+        #     ball_obj.vel = v1
+        #     # player.vel = v2
 
-        coin_sprite.rect.center = (coin_x, coin_y)
-        # coin_sprite.rect.center = pygame.mouse.get_pos()
-        coin_sprite.rect.center = (coin_x, coin_y)
-        # coin_sprite.rect.center = pygame.mouse.get_pos()
+        coin.rect.center = (coin_x, coin_y)
+        # coin.rect.center = pygame.mouse.get_pos()
 
-        if coin_sprite.rect.colliderect(player.rect):
+        if coin.rect.colliderect(player.rect):
             score += 1
             coin_collisions += 1
             coin_x = random.uniform(
                 60,
-                WIDTH
-                - player.rect.x
-                + (-20 if coin_sprite.rect.x > WIDTH // 2 else 20),
+                WIDTH - player.rect.x + (-20 if coin.rect.x > WIDTH // 2 else 20),
             )
             coin_y = random.uniform(
                 60,
-                HEIGHT
-                - player.rect.y
-                + (-20 if coin_sprite.rect.y > HEIGHT // 2 else 20),
+                HEIGHT - player.rect.y + (-20 if coin.rect.y > HEIGHT // 2 else 20),
             )
+
             # if (
             #     coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
             # ) or (
@@ -459,7 +497,8 @@ def main(fps: int = 60):
             #     coin_y = random.uniform(0, HEIGHT - player.rect.y - 50)
 
         player.update()
-        coin_sprite.update()
+        coin.update()
+        # ball_obj.update()
         sprites.draw(screen)
         # screen.blit(coin, coin_rect)
 
@@ -474,7 +513,7 @@ def main(fps: int = 60):
         ]
 
         if debug:
-            draw_debug_menu(player, auto_mode, coin_cps, coin_sprite, pos_rel)
+            draw_debug_menu(player, auto_mode, coin_cps, coin, pos_rel)
         elif controls_hint:
             draw_text(
                 screen,
@@ -489,6 +528,139 @@ def main(fps: int = 60):
         draw_scores()
 
         draw_timer(70 if not sliders_enabled else 0)
+
+        if auto_mode:
+            opacity_right = (
+                128
+                if player.vel.x < player.steps * normalized.x - 1
+                else 255
+                if player.vel.x > 0
+                else 128
+            )
+            opacity_left = (
+                128
+                if player.vel.x > -(player.steps * normalized.x - 1)
+                else 255
+                if player.vel.x < 0
+                else 128
+            )
+            opacity_down = (
+                128
+                if player.vel.y < player.steps * normalized.y - 1
+                else 255
+                if player.vel.y > 0
+                else 128
+            )
+            opacity_up = (
+                128
+                if player.vel.y > -(player.steps * normalized.y - 1)
+                else 255
+                if player.vel.y < 0
+                else 128
+            )
+
+            # the fix for a strange bug
+            if player.vel.x < 0 and player.vel.y > 0:
+                opacity_down = 255
+                opacity_left = 255
+            if player.vel.x > 0 and player.vel.y < 0:
+                opacity_up = 255
+                opacity_right = 255
+        else:
+            keys = pygame.key.get_pressed()
+            opacity_right = (
+                255
+                if (
+                    keys[pygame.K_RIGHT]
+                    if not controller_mode
+                    else 255
+                    if controllers[0].get_axis(0) >= controller_deadzone
+                    else 128
+                )
+                else 128
+            )
+            opacity_left = (
+                255
+                if (
+                    keys[pygame.K_LEFT]
+                    if not controller_mode
+                    else 255
+                    if controllers[0].get_axis(0) <= -controller_deadzone
+                    else 128
+                )
+                else 128
+            )
+            opacity_down = (
+                255
+                if (
+                    keys[pygame.K_DOWN]
+                    if not controller_mode
+                    else 255
+                    if controllers[0].get_axis(1) >= controller_deadzone
+                    else 128
+                )
+                else 128
+            )
+            opacity_up = (
+                255
+                if (
+                    keys[pygame.K_UP]
+                    if not controller_mode
+                    else 255
+                    if controllers[0].get_axis(1) <= -controller_deadzone
+                    else 128
+                )
+                else 128
+            )
+
+        # print(player.vec.xy, opacity_down, opacity_left)
+
+        right = draw_text(
+            screen,
+            smaller_font,
+            text="Right",
+            opacity=opacity_right,
+            anchor="bottomleft",
+            pos=(10, HEIGHT - 10),
+            shadow=True,
+        )
+
+        left = draw_text(
+            screen,
+            smaller_font,
+            text="Left",
+            opacity=opacity_left,
+            anchor="bottomleft",
+            pos=(10, HEIGHT - 10 - right.get_height()),
+            shadow=True,
+        )
+
+        down = draw_text(
+            screen,
+            smaller_font,
+            text="Down",
+            opacity=opacity_down,
+            anchor="bottomleft",
+            pos=(10, HEIGHT - 10 - right.get_height() - left.get_height()),
+            shadow=True,
+        )
+
+        draw_text(
+            screen,
+            smaller_font,
+            text="Up",
+            opacity=opacity_up,
+            anchor="bottomleft",
+            pos=(
+                10,
+                HEIGHT
+                - 10
+                - right.get_height()
+                - left.get_height()
+                - down.get_height(),
+            ),
+            shadow=True,
+        )
 
         if sliders_enabled:
             manager.draw_ui(screen)

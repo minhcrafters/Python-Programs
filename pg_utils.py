@@ -7,19 +7,22 @@ def scale_image(image: pygame.surface.Surface, factor: float) -> pygame.surface.
     )
 
 
+def ease_in_out_quad(x):
+    return 2 * x * x if x < 0.5 else 1 - pow(-2 * x + 2, 2) / 2
+
+
 def draw_text(
     screen: pygame.surface.Surface,
     font: pygame.font.Font,
     text: str,
     pos: tuple[float | int, float | int],
     colour: tuple[int, int, int] = (255, 255, 255),
+    opacity: int = 255,
     drop_colour: tuple[int, int, int, int] = (0, 0, 0, 128),
     anti_aliasing: bool = False,
     anchor: str = "topleft",
     shadow: bool = False,
     shadow_offset: float = 1,
-    fade_out_when_collided: bool = False,
-    collision_rect: pygame.Rect | None = None,
 ) -> pygame.surface.Surface:
     if shadow:
         dropshadow_offset = shadow_offset + (
@@ -28,12 +31,8 @@ def draw_text(
 
         text_bitmap = font.render(text, anti_aliasing, drop_colour).convert_alpha()
         rect = text_bitmap.get_rect()
+        text_bitmap.set_alpha(drop_colour[3])
         setattr(rect, anchor, pos)
-
-        if fade_out_when_collided and rect.colliderect(collision_rect):
-            text_bitmap.set_alpha(128 - drop_colour[3])
-        else:
-            text_bitmap.set_alpha(255 - drop_colour[3])
 
         screen.blit(
             text_bitmap, (rect.x + dropshadow_offset, rect.y + dropshadow_offset)
@@ -43,10 +42,7 @@ def draw_text(
     rect = text_bitmap.get_rect()
     setattr(rect, anchor, pos)
 
-    if fade_out_when_collided and rect.colliderect(collision_rect):
-        text_bitmap.set_alpha(128)
-    else:
-        text_bitmap.set_alpha(255)
+    text_bitmap.set_alpha(opacity)
 
     screen.blit(text_bitmap, rect)
     return text_bitmap
