@@ -73,8 +73,10 @@ def main():
         # Auto-click lmao
         if autoclick:
             if pygame.mouse.get_focused():
-                pygame.mouse.set_pos(image_rect.center) 
+                pygame.mouse.set_pos(image_rect.center)
                 pyautogui.click()
+
+        
 
         pygame.display.flip()
         clock.tick(60)

@@ -7,10 +7,6 @@ def scale_image(image: pygame.surface.Surface, factor: float) -> pygame.surface.
     )
 
 
-def ease_in_out_quad(x):
-    return 2 * x * x if x < 0.5 else 1 - pow(-2 * x + 2, 2) / 2
-
-
 def draw_text(
     screen: pygame.surface.Surface,
     font: pygame.font.Font,
