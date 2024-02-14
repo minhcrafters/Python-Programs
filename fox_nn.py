@@ -1,13 +1,12 @@
 """
-Supervised learning neural network model v1
+Reinforcement Supervised Learning neural network model v1
 Author: minhcrafters
 With some code from StackOverflow :)
 """
 
-import sys
 import pygame
 import random
-import pygame_gui
+import nn_helper
 import math
 import os
 
@@ -19,74 +18,11 @@ from pygame import Vector2
 from pg_utils import draw_text, scale_image
 from nn_helper import make_prediction
 
-score = 0
-
 SCALE_FACTOR = 0.75
 WIDTH, HEIGHT = 800, 600
 
-pygame.init()
-pygame.font.init()
-pygame.joystick.init()
-
-controllers: dict[int, pygame.joystick.Joystick] = {}
-controller_deadzone: float = 0.075
-
-font = pygame.font.Font("./font/MinecraftBold.otf", 40)
-smaller_font = pygame.font.Font("./font/MinecraftRegular.otf", 20)
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-
-pygame.display.set_caption("Coin Collector")
-
-manager = pygame_gui.UIManager((WIDTH, HEIGHT))
-
-background = pygame.image.load("./img/background.png").convert()
-
-player_image = pygame.image.load("./img/fox.png").convert_alpha()
-coin_image = pygame.image.load("./img/coin.png").convert_alpha()
-ball_image = pygame.image.load("./img/ball.png").convert_alpha()
-
-background = scale_image(background, SCALE_FACTOR)
-player_image = scale_image(player_image, SCALE_FACTOR)
-coin_image = scale_image(coin_image, SCALE_FACTOR)
-ball_image = scale_image(ball_image, 0.1 * SCALE_FACTOR)
-
-clock = pygame.time.Clock()
-
-coin_x = random.uniform(0, WIDTH / 2)
-coin_y = random.uniform(0, HEIGHT / 2)
-
-sprites = pygame.sprite.Group()
-
-accel_slider = pygame_gui.elements.UIHorizontalSlider(
-    relative_rect=screen.get_rect(),
-    value_range=(0, 1),
-    start_value=0.25,
-    manager=manager,
-)
-
-speed_slider = pygame_gui.elements.UIHorizontalSlider(
-    relative_rect=screen.get_rect(),
-    value_range=(1, 100),
-    start_value=25,
-    manager=manager,
-)
-
-
-accel_slider.set_dimensions((500, 30))
-accel_slider.set_position(
-    (
-        (WIDTH - accel_slider.rect.width) / 2,
-        (HEIGHT - accel_slider.rect.height) - 46,
-    )
-)
-
-speed_slider.set_dimensions((500, 30))
-speed_slider.set_position(
-    (
-        (WIDTH - accel_slider.rect.width) / 2,
-        (HEIGHT - accel_slider.rect.height) - 12,
-    )
-)
+SPEED = 25
+ACCELERATION = 0.25
 
 
 class Actor(pygame.sprite.Sprite):
@@ -114,68 +50,26 @@ class Actor(pygame.sprite.Sprite):
     def pos(self, pos: Vector2):
         self.rect.centerx, self.rect.centery = pos.x, pos.y
 
-    def control(
-        self, controller_mode: bool = False, right=None, left=None, down=None, up=None
-    ):
-        keys = pygame.key.get_pressed()
-
-        if controller_mode:
-            horizontal_input = (
-                controllers[0].get_axis(0)
-                if abs(controllers[0].get_axis(0)) >= controller_deadzone
-                else 0
-            )
-            vertical_input = (
-                controllers[0].get_axis(1)
-                if abs(controllers[0].get_axis(1)) >= controller_deadzone
-                else 0
-            )
-        else:
-            if not (left or right or down or up):
-                horizontal_input = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
-                vertical_input = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
-            else:
-                horizontal_input = right - left
-                vertical_input = down - up
+    def control(self, right=None, left=None, down=None, up=None):
+        horizontal_input = right - left
+        vertical_input = down - up
 
         self.vel.x += horizontal_input * self.accel * self.steps
         self.vel.y += vertical_input * self.accel * self.steps
 
         # print(self.vec.x)
 
-        if controller_mode:
-            if abs(controllers[0].get_axis(0)) <= controller_deadzone:
+        if right and left and down and up:
+            if abs(horizontal_input) <= 0.05:
                 if abs(self.vel.x) > 0.99:
                     self.vel.x *= 0.9
                 else:
                     self.vel.x = 0
-            if abs(controllers[0].get_axis(1)) <= controller_deadzone:
-                if abs(self.vel.y) > 0.99:
-                    self.vel.y *= 0.9
-                else:
-                    self.vel.y = 0
-        else:
-            if right and left and down and up:
-                if abs(horizontal_input) <= 0.05:
-                    if abs(self.vel.x) > 0.99:
-                        self.vel.x *= 0.9
-                    else:
-                        self.vel.x = 0
-                if abs(vertical_input) <= 0.05:
-                    if abs(self.vel.y) > 0.99:
-                        self.vel.y *= 0.9
-                    else:
-                        self.vel.y = 0
-            if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
-                if abs(self.vel.x) > 0.99:
-                    self.vel.x *= 0.9
-                else:
-                    self.vel.x = 0
-            if not (keys[pygame.K_UP] or keys[pygame.K_DOWN]):
-                if abs(self.vel.y) > 0.99:
-                    self.vel.y *= 0.9
-                else:
-                    self.vel.y = 0
+        if abs(vertical_input) <= 0.05:
+            if abs(self.vel.y) > 0.99:
+                self.vel.y *= 0.9
+            else:
+                self.vel.y = 0
 
     def move_rel(self, pos_rel: Vector2):
         if pos_rel.magnitude() > 0:
@@ -227,8 +121,8 @@ def draw_scores():
     draw_text(screen, font, text, pos=(text_x, text_y), shadow=True, shadow_offset=3)
 
 
-def draw_timer(offset: int = 0):
-    text = f"Accel: {round(accel_slider.get_current_value(), 2)} | Speed: {speed_slider.get_current_value()}"
+def draw_timer(player: Actor, offset: int = 0):
+    text = f"Accel: {round(player.accel, 2)} | Speed: {player.steps}"
     text_x = (WIDTH - smaller_font.size(text)[0]) // 2
     text_y = (HEIGHT - smaller_font.get_height()) - 80 + offset
     draw_text(
@@ -249,7 +143,6 @@ def draw_debug_menu(
     pos_rel: Vector2,
 ):
     debug_texts = [
-        f"fps: {round(clock.get_fps(), 2)}",
         f"auto_mode: {auto_mode_enabled}",
         f"pos_player:\n{round(player.pos, 2)}",
         f"pos_coin:\n{round(coin_sprite.pos, 2)}",
@@ -285,7 +178,6 @@ def draw_debug_menu(
         (10, 115 + smaller_font.get_height()),
         (10, 180 + smaller_font.get_height()),
         (10, 245 + smaller_font.get_height()),
-        (10, 310 + smaller_font.get_height()),
         pygame.draw.line(
             screen, (255, 0, 0), player.rect.center, coin_sprite.rect.center
         ).center,
@@ -326,13 +218,17 @@ def make_gif(frames_dir, delete_frames=True):
         shutil.rmtree(frames_dir)
 
 
-def predict(model, player: Actor, accel, coin: Actor, pos_rel: Vector2):
+def predict(
+    model, player: Actor, accel, coin: Actor, coin_cps: float, pos_rel: Vector2
+):
     d = {
         "player_pos_x": player.rect.x,
         "player_pos_y": player.rect.y,
         "player_vel_x": player.vel.x,
         "player_vel_y": player.vel.y,
         "player_accel": accel,
+        "coins_collected": score,
+        "coins_per_sec": coin_cps,
         "coin_pos_x": coin.rect.x,
         "coin_pos_y": coin.rect.y,
         "rel_dist_x": pos_rel.x,
@@ -348,8 +244,48 @@ def predict(model, player: Actor, accel, coin: Actor, pos_rel: Vector2):
     )
 
 
-def main(fps: int = 60):
-    global score, coin_x, coin_y, player_image, coin_image, background
+def main(
+    seconds_to_eval: int,
+    fps: int = 60,
+    curr_gen: int = 0,
+    model=None,
+    record_frames: bool = False,
+):
+    pygame.init()
+    pygame.font.init()
+    pygame.joystick.init()
+
+    global score, font, smaller_font, screen
+
+    score = 0
+
+    font = pygame.font.Font("./font/MinecraftBold.otf", 40)
+    smaller_font = pygame.font.Font("./font/MinecraftRegular.otf", 20)
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
+    pygame.display.set_caption("Coin Collector (Neural Network Version)")
+
+    pygame.time.set_timer(pygame.USEREVENT, 1000)
+
+    background = pygame.image.load("./img/background.png").convert()
+
+    player_image = pygame.image.load("./img/fox.png").convert_alpha()
+    coin_image = pygame.image.load("./img/coin.png").convert_alpha()
+    ball_image = pygame.image.load("./img/ball.png").convert_alpha()
+
+    background = scale_image(background, SCALE_FACTOR)
+    player_image = scale_image(player_image, SCALE_FACTOR)
+    coin_image = scale_image(coin_image, SCALE_FACTOR)
+    ball_image = scale_image(ball_image, 0.1 * SCALE_FACTOR)
+
+    clock = pygame.time.Clock()
+
+    coin_x = random.uniform(0, WIDTH / 2)
+    coin_y = random.uniform(0, HEIGHT / 2)
+
+    sprites = pygame.sprite.Group()
+
+    timer = seconds_to_eval
 
     screen_width, screen_height = screen.get_size()
     background_width, background_height = background.get_size()
@@ -358,8 +294,8 @@ def main(fps: int = 60):
 
     player = Actor(
         player_image,
-        accel=accel_slider.get_current_value(),
-        steps=speed_slider.get_current_value(),
+        accel=ACCELERATION,
+        steps=SPEED,
     )
 
     player.rect.centerx = WIDTH // 2
@@ -389,36 +325,23 @@ def main(fps: int = 60):
     auto_mode = False
     done_reset = True
     debug = False
-    controls_hint = True
     _counter = 1000
-    _counter2 = 500
     coin_cps = 0
     sliders_enabled = False
-    controller_mode = False
-    create_dataset = False
 
-    model = None
-
-    if create_dataset:
-        auto_mode = True
-
-    if not create_dataset:
-        import keras
-
-        model = keras.models.load_model("./model/model_25_025_14022024_183513.keras")
-    else:
-        game_dataset = []
+    game_dataset = []
 
     pos_rel = Vector2(0, 0)
     # thread = threading.Thread(
     #     target=predict, args=[create_dataset, model, player, coin, pos_rel]
     # )
     # thread.start()
-
     running = True
     while running:
         t = clock.tick(fps)
-        dt = t / 1000.0
+
+        if timer <= 0:
+            running = False
 
         # screen.fill((59, 177, 227))
 
@@ -429,9 +352,6 @@ def main(fps: int = 60):
             screen.blit(background, (x * background_width, y * background_height))
 
         pos_rel = Vector2(coin.rect.center) - Vector2(player.rect.center)
-
-        accel_slider.set_current_value(player.accel)
-        speed_slider.set_current_value(player.steps)
 
         # print(player.rect.right)
 
@@ -472,7 +392,10 @@ def main(fps: int = 60):
                 else:
                     player.vel.y = 0
                 done_reset = True
-            player.control(controller_mode=controller_mode)
+            if model:
+                predict(model, player, accel, coin, coin_cps, pos_rel)
+            else:
+                auto_mode = True
 
         # coin_sprite.control()
 
@@ -490,12 +413,6 @@ def main(fps: int = 60):
             start_time = pygame.time.get_ticks()
             _counter += 1000
 
-        # _counter2 -= t
-        # if _counter2 < 0:
-        if not create_dataset:
-            predict(model, player, accel, coin, pos_rel)
-        #     _counter2 += 400
-
         normalized = (
             player.vel.normalize()
             if (player.vel.x, player.vel.y) > (0, 0)
@@ -509,79 +426,16 @@ def main(fps: int = 60):
             ):
                 running = False
 
-            if event.type == pygame.JOYDEVICEADDED:
-                joy = pygame.joystick.Joystick(event.device_index)
-                controllers[joy.get_instance_id()] = joy
-                print(f"Joystick {joy.get_instance_id()} connected")
-
-            if event.type == pygame.JOYDEVICEREMOVED:
-                if event.instance_id:
-                    controller_mode = False
-                    del controllers[event.instance_id]
-                    print(f"Joystick {event.instance_id} disconnected")
-
-            if event.type in (
-                pygame.JOYAXISMOTION,
-                pygame.JOYBALLMOTION,
-                pygame.JOYBUTTONDOWN,
-                pygame.JOYBUTTONUP,
-                pygame.JOYHATMOTION,
-            ):
-                if (
-                    abs(controllers.get(event.instance_id).get_axis(0))
-                    >= controller_deadzone
-                    and abs(controllers.get(event.instance_id).get_axis(1))
-                    >= controller_deadzone
-                ):
-                    if not controller_mode:
-                        controller_mode = True
-
-            if event.type == pygame.JOYBUTTONDOWN:
-                if controller_mode:
-                    if event.button == 2:
-                        debug = not debug
-                    if event.button == 3:
-                        auto_mode = not auto_mode
-                    if event.button == 6:
-                        controls_hint = not controls_hint
-                    if event.button == 7:
-                        player.rect.centerx = WIDTH // 2
-                        player.rect.centery = HEIGHT // 2
-                    if event.button == 11:
-                        player.steps += 1
-                    if event.button == 12:
-                        player.steps -= 1
-                    if event.button == 13:
-                        player.accel -= 0.05
-                    if event.button == 14:
-                        player.accel += 0.05
+            if event.type == pygame.USEREVENT:
+                timer -= 1
 
             if event.type == pygame.KEYDOWN:
-                if controller_mode:
-                    controller_mode = False
-                if event.key == pygame.K_SPACE:
-                    auto_mode = not auto_mode
                 if event.key == pygame.K_F3:
                     debug = not debug
-                if event.key == pygame.K_F2:
-                    sliders_enabled = not sliders_enabled
-                if event.key == pygame.K_TAB:
-                    controls_hint = not controls_hint
 
                 if event.key == pygame.K_r:
                     player.rect.centerx = WIDTH // 2
                     player.rect.centery = HEIGHT // 2
-
-            if event.type == pygame_gui.UI_HORIZONTAL_SLIDER_MOVED:
-                if event.ui_element == accel_slider:
-                    player.accel = event.value
-                if event.ui_element == speed_slider:
-                    player.steps = event.value
-
-            manager.process_events(event)
-
-        if create_dataset and score >= 1500:
-            running = False
 
         # ball_obj.vel.y += 1
 
@@ -624,116 +478,57 @@ def main(fps: int = 60):
         sprites.draw(screen)
         # screen.blit(coin, coin_rect)
 
-        controls_hint_texts = [
-            f"{'TAB' if not controller_mode else 'Options'}: Toggle controls",
-            f"{'Arrow Keys' if not controller_mode else 'Left Stick'}: Move",
-            f"{'R' if not controller_mode else 'Left Stick In'}: Reset position",
-            # f"{'F2: Toggle sliders' if not controller_mode else 'D-pad U/D: Change speed{}D-pad L/R: Change acceleration'.format('\n')}",
-            f"{'F3' if not controller_mode else 'Square'}: Toggle debug menu",
-            f"{'Space' if not controller_mode else 'Triangle'}: Toggle Auto Mode",
-            "ESC: Quit",
-        ]
-
         if debug:
             draw_debug_menu(player, [player, coin], auto_mode, coin_cps, coin, pos_rel)
-        elif controls_hint:
+        else:
             draw_text(
                 screen,
                 smaller_font,
-                "\n".join(controls_hint_texts),
+                f"{'Gen #{}'.format(curr_gen) if curr_gen else 'Running traditional bot'}\nTime left: {timer}",
                 pos=(10, 10),
                 shadow=True,
             )
 
-        manager.update(dt)
-
         draw_scores()
 
-        draw_timer(70 if not sliders_enabled else 0)
+        draw_timer(player, 70 if not sliders_enabled else 0)
 
-        if auto_mode:
-            opacity_right = (
-                128
-                if player.vel.x < player.steps * normalized.x - 1
-                else 255
-                if player.vel.x > 0
-                else 128
-            )
-            opacity_left = (
-                128
-                if player.vel.x > -(player.steps * normalized.x - 1)
-                else 255
-                if player.vel.x < 0
-                else 128
-            )
-            opacity_down = (
-                128
-                if player.vel.y < player.steps * normalized.y - 1
-                else 255
-                if player.vel.y > 0
-                else 128
-            )
-            opacity_up = (
-                128
-                if player.vel.y > -(player.steps * normalized.y - 1)
-                else 255
-                if player.vel.y < 0
-                else 128
-            )
+        opacity_right = (
+            128
+            if player.vel.x < player.steps * normalized.x - 1
+            else 255
+            if player.vel.x > 0
+            else 128
+        )
+        opacity_left = (
+            128
+            if player.vel.x > -(player.steps * normalized.x - 1)
+            else 255
+            if player.vel.x < 0
+            else 128
+        )
+        opacity_down = (
+            128
+            if player.vel.y < player.steps * normalized.y - 1
+            else 255
+            if player.vel.y > 0
+            else 128
+        )
+        opacity_up = (
+            128
+            if player.vel.y > -(player.steps * normalized.y - 1)
+            else 255
+            if player.vel.y < 0
+            else 128
+        )
 
-            # the fix for a strange bug
-            if player.vel.x < 0 and player.vel.y > 0:
-                opacity_down = 255
-                opacity_left = 255
-            if player.vel.x > 0 and player.vel.y < 0:
-                opacity_up = 255
-                opacity_right = 255
-        else:
-            keys = pygame.key.get_pressed()
-            opacity_right = (
-                255
-                if (
-                    keys[pygame.K_RIGHT]
-                    if not controller_mode
-                    else 255
-                    if controllers[0].get_axis(0) >= controller_deadzone
-                    else 128
-                )
-                else 128
-            )
-            opacity_left = (
-                255
-                if (
-                    keys[pygame.K_LEFT]
-                    if not controller_mode
-                    else 255
-                    if controllers[0].get_axis(0) <= -controller_deadzone
-                    else 128
-                )
-                else 128
-            )
-            opacity_down = (
-                255
-                if (
-                    keys[pygame.K_DOWN]
-                    if not controller_mode
-                    else 255
-                    if controllers[0].get_axis(1) >= controller_deadzone
-                    else 128
-                )
-                else 128
-            )
-            opacity_up = (
-                255
-                if (
-                    keys[pygame.K_UP]
-                    if not controller_mode
-                    else 255
-                    if controllers[0].get_axis(1) <= -controller_deadzone
-                    else 128
-                )
-                else 128
-            )
+        # the fix for a strange bug
+        if player.vel.x < 0 and player.vel.y > 0:
+            opacity_down = 255
+            opacity_left = 255
+        if player.vel.x > 0 and player.vel.y < 0:
+            opacity_up = 255
+            opacity_right = 255
 
         # print(player.vec.xy, opacity_down, opacity_left)
 
@@ -790,39 +585,38 @@ def main(fps: int = 60):
         #     else player.vel
         # )
 
-        if sliders_enabled:
-            manager.draw_ui(screen)
-
         # game_state = [fox_x, fox_y, coin_x, coin_y, relative_dist_x, relative_dist_y]
         # 0 - left, 1 - right
         # 2 - up, 3 - down
         # TODO: implement the data
-        if create_dataset:
-            game_state = [
-                player.rect.x,
-                player.rect.y,
-                player.vel.x,
-                player.vel.y,
-                accel,
-                coin.rect.x,
-                coin.rect.y,
-                pos_rel.x,
-                pos_rel.y,
+        game_state = [
+            player.rect.x,
+            player.rect.y,
+            player.vel.x,
+            player.vel.y,
+            accel,
+            score,
+            coin_cps,
+            coin.rect.x,
+            coin.rect.y,
+            pos_rel.x,
+            pos_rel.y,
+        ]
+        if player.vel.x != 0 or player.vel.y != 0:
+            norm_x = abs(player.vel.normalize().x)
+            norm_y = abs(player.vel.normalize().y)
+            output_action = [
+                norm_x if pos_rel.x > 0 else 0,
+                norm_x if pos_rel.x < 0 else 0,
+                norm_y if pos_rel.y > 0 else 0,
+                norm_y if pos_rel.y < 0 else 0,
             ]
-            if player.vel.x != 0 or player.vel.y != 0:
-                norm_x = abs(player.vel.normalize().x)
-                norm_y = abs(player.vel.normalize().y)
-                output_action = [
-                    norm_x if pos_rel.x > 0 else 0,
-                    norm_x if pos_rel.x < 0 else 0,
-                    norm_y if pos_rel.y > 0 else 0,
-                    norm_y if pos_rel.y < 0 else 0,
-                ]
-            else:
-                output_action = [0, 0, 0, 0]
-
-            game_dataset.append([game_state, output_action])
         else:
+            output_action = [0, 0, 0, 0]
+
+        game_dataset.append([game_state, output_action])
+
+        if record_frames:
             pygame.image.save(screen, os.path.join(frame_dir, f"frame_{frame_num}.png"))
             frame_num += 1
 
@@ -830,20 +624,33 @@ def main(fps: int = 60):
 
     pygame.quit()
 
-    if create_dataset:
-        with open(
-            f"./dataset/results_{player.steps}_{str(float(player.accel)).replace('.', '')}_{datetime.today().strftime('%d%m%Y')}_{datetime.today().strftime('%H%M%S')}.csv",
-            "w",
-        ) as f:
-            f.write(
-                "player_pos_x,player_pos_y,player_vel_x,player_vel_y,player_accel,coin_pos_x,coin_pos_y,rel_dist_x,rel_dist_y,move_right,move_left,move_down,move_up\n"
-            )
-            for data in game_dataset:
-                f.write(",".join(map(str, data[0] + data[1])) + "\n")
-    else:
+    name = f"results_{player.steps}_{str(float(player.accel)).replace('.', '')}_{datetime.today().strftime('%d%m%Y')}_{datetime.today().strftime('%H%M%S')}.csv"
+
+    with open(
+        f"./dataset/{name}",
+        "w",
+    ) as f:
+        f.write(
+            "player_pos_x,player_pos_y,player_vel_x,player_vel_y,player_accel,coins_collected,coins_per_sec,coin_pos_x,coin_pos_y,rel_dist_x,rel_dist_y,move_right,move_left,move_down,move_up\n"
+        )
+        for data in game_dataset:
+            f.write(",".join(map(str, data[0] + data[1])) + "\n")
+
+    model = nn_helper.run(name, model if model else None)
+
+    if record_frames:
         make_gif(frame_dir)
-    sys.exit(0)
+
+    return model, name
 
 
 if __name__ == "__main__":
-    main(60)
+    gens = 10
+    seconds_to_eval = 20
+
+    result, name = main(seconds_to_eval, 60)
+    for i in range(gens + 1):
+        print(result)
+        print(name)
+        result, name = main(seconds_to_eval, 60, i, result)
+    result.save("./model/model_{}.keras".format(name[8:-4]))

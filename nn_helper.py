@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
+from tabulate import tabulate as tb
 
 from keras.models import Sequential
-from keras.models import load_model
 from keras.layers import Dense
 from keras import callbacks
 # from rl.agents.cem import CEMAgent
@@ -50,6 +50,8 @@ def preprocess_data(df: pd.DataFrame):
             "player_vel_x",
             "player_vel_y",
             "player_accel",
+            "coins_collected",
+            "coins_per_sec",
             "coin_pos_x",
             "coin_pos_y",
             "rel_dist_x",
@@ -89,8 +91,7 @@ def make_prediction(model: Sequential, game_state: list):
     return model.predict(np.array(game_state))[0]
 
 
-if __name__ == "__main__":
-    dataset_name = "results_25_025_14022024_183513.csv"
+def run(dataset_name: str, model: Sequential = None):
     df = pd.read_csv(f"./dataset/{dataset_name}")
 
     df_train = df.iloc[: df.shape[0] // 2, :]
@@ -98,16 +99,13 @@ if __name__ == "__main__":
     data_train = preprocess_data(df_train)
     data_test = preprocess_data(df_test)
 
-    if dataset_name.endswith(".csv"):
+    if not model:
         model = create_model(data_train[0].shape[1], data_train[1].shape[1])
-    elif dataset_name.endswith(".keras"):
-        model = load_model("./model/model_{}.keras".format(dataset_name[8:-4]))
-    else:
-        raise ValueError("Invalid dataset name")
 
     train_model(
         model, data_train[0], data_train[1], data_test[0], data_test[1], epochs=650
     )
 
-    print(f"[loss, accuracy]: {evaluate_model(model, data_test[0], data_test[1])}")
-    model.save("./model/model_{}.keras".format(dataset_name[8:-4]))
+    scores = evaluate_model(model, data_test[0], data_test[1])
+    print(tb([["Loss", scores[0]], ["Accuracy", scores[1]]]))
+    return model
