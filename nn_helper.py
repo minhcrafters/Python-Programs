@@ -1,6 +1,7 @@
 import gymnasium as gym
 import numpy as np
 import random
+import tensorflow as tf
 
 from collections import deque
 from keras.models import Sequential
@@ -24,15 +25,29 @@ from keras import callbacks
 
 class DQNAgent:
     def __init__(self, nb_episodes, state_size, action_size):
+        # Initialize the state and action sizes
         self.state_size = state_size
         self.action_size = action_size
+        # Create a memory buffer with a maximum length of nb_episodes
         self.memory = deque(maxlen=nb_episodes)
+        # Set the discount factor for future rewards
         self.gamma = 0.95
+        # Initialize the state to None
+        self.state = None
+        # Initialize the exploration rate for the agent
         self.epsilon = 1.0
+        # Set the decay rate for the exploration rate
         self.epsilon_decay = 0.995
+        # Set the minimum exploration rate
         self.epsilon_min = 0.01
-        self.learning_rate = 1e-1
-        self.model = self._build_model()
+        # Set the learning rate for the neural network
+        self.learning_rate = 1e-3
+        # Use MirroredStrategy for distributed training
+        self.strategy = tf.distribute.MirroredStrategy()
+
+        # Create the neural network model within the distributed strategy scope
+        with self.strategy.scope():
+            self.model = self._build_model()
 
     def _build_model(self):
         model = Sequential()
@@ -110,57 +125,6 @@ class DQNAgent:
 #     dqn.compile(adam_v2.Adam(learning_rate=1e-1), metrics=["mae"])
 
 #     return dqn
-
-
-# Thank you ChatGPT.
-def calculate_reward(
-    player_position, player_velocity, coins, max_distance, coins_collected
-):
-    # Calculate distance between player and each coin
-    distances = np.linalg.norm(coins - player_position)
-
-    # Find the closest coin
-    closest_coin_distance = np.min(distances)
-
-    # Reward based on proximity to closest coin
-    proximity_reward = 1.0 - closest_coin_distance / max_distance * coins_collected
-
-    # Penalty based on player velocity (optional)
-    velocity_penalty = np.linalg.norm(player_velocity) * 0.01
-
-    # Total reward
-    reward = proximity_reward - velocity_penalty
-
-    # print(reward)
-
-    return reward
-
-
-def train_model(
-    model: DQNAgent, env: gym.Env, epochs=100, batch_size=32, sample_weight=[]
-):
-    # earlystopping_train = callbacks.EarlyStopping(
-    #     monitor="loss", mode="min", patience=2, restore_best_weights=True
-    # )
-    earlystopping_test = callbacks.EarlyStopping(
-        monitor="val_loss",
-        mode="min",
-        patience=5,
-        restore_best_weights=True,
-    )
-
-    model.fit(
-        env,
-        nb_steps=50000,
-        visualize=True,
-        verbose=2,
-        callbacks=[earlystopping_test],
-    )
-    # model.fit(None, nb_steps=100000, visualize=False)
-
-
-def evaluate_model(model: DQNAgent, env: gym.Env, nb_episodes=5):
-    model.test(env, nb_episodes=nb_episodes, visualize=True)
 
 
 # Finally, evaluate our algorithm for 5 episodes.

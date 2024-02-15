@@ -136,7 +136,7 @@ def make_gif(frames_dir, delete_frames=True):
 class CoinCollectorEnv(Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
-    def __init__(self, render_mode="human"):
+    def __init__(self, render_mode=None):
         global SPEED
 
         super(CoinCollectorEnv, self).__init__()
@@ -173,6 +173,7 @@ class CoinCollectorEnv(Env):
 
         self.screen = None
         self.clock = None
+        self._counter = 1000
 
         self.state = None
         self.timer = 0
@@ -251,6 +252,9 @@ class CoinCollectorEnv(Env):
         return {
             "rel_dist": self.pos_rel,
         }
+
+    def _normalize(self, x, min_x, max_x):
+        return (x - min_x) / (max_x - min_x)
 
     def step(self, action, curr_gen: int):
         assert self.action_space.contains(
@@ -336,10 +340,14 @@ class CoinCollectorEnv(Env):
 
         # print(self.pos_rel)
 
-        if self.pos_rel <= 30:
+        self.reward = (
+            -self._normalize(float(self.pos_rel), 0, WIDTH) + self.score * 10 + 1
+        )
+
+        if self.pos_rel <= 38.5:
             self.score += 1
             self.coin_collisions += 1
-            self.coin_loc = self.np_random.integers(0, WIDTH - 10, size=2, dtype=int)
+            self.coin_loc = self.np_random.integers(0, HEIGHT - 20, size=2, dtype=int)
 
         # ball_obj.vel.y += 1
 
@@ -379,16 +387,15 @@ class CoinCollectorEnv(Env):
         observation = self._get_obs()
         info = self._get_info()
 
-        self.reward = nn_helper.calculate_reward(
-            np.array([observation[0], observation[1]]),
-            np.array([observation[2], observation[3]]),
-            np.array([observation[4], observation[5]]),
-            info["rel_dist"],
-            self.coin_collisions,
-        )
+        # self.reward = nn_helper.calculate_reward(
+        #     info["rel_dist"],
+        #     self.coin_collisions,
+        # )
 
-        if pygame.event.get(pygame.USEREVENT):
+        self._counter -= self.dt if self.render_mode == "human" else 16.67
+        if self._counter < 0:
             self.timer -= 1
+            self._counter += 1000
 
         if self.render_mode == "human":
             self._render_frame(curr_gen=curr_gen)
@@ -529,8 +536,6 @@ class CoinCollectorEnv(Env):
                 [self.player_rect.centerx, self.player_rect.centery]
             )
 
-            self.coin_loc = np.array([self.coin_rect.centerx, self.coin_rect.centery])
-
             self.draw_drop_shadow(self.screen, self.player_rect, self.player_image)
             self.draw_drop_shadow(self.screen, self.coin_rect, self.coin_image)
 
@@ -548,7 +553,7 @@ class CoinCollectorEnv(Env):
                 f"{round(self.vel, 2)}",
                 "pos_rel:",
                 f"{round(self.pos_rel, 2)}",
-                f"coins/sec: {round(self.coin_collisions, 1)}",
+                f"reward: {round(self.reward, 2)}",
                 # f"{round(self.pos_rel, 1)}",
             ]
 
@@ -694,7 +699,7 @@ if __name__ == "__main__":
     agent = nn_helper.DQNAgent(n_episodes, state_size, action_size)
 
     # check_env(env)
-    for e in range(n_episodes):
+    for e in range(n_episodes + 1):
         state, info = env.reset()
         state = np.reshape(state, [1, state_size])
 
@@ -704,13 +709,13 @@ if __name__ == "__main__":
             env.render(e)
             action = agent.act(state)
             next_state, reward, done, _, info = env.step(action, e)
-            reward = reward if not done else -10
+            # reward = reward if not done else -10
             next_state = np.reshape(next_state, [1, state_size])
             agent.remember(state, action, reward, next_state, done)
             state = next_state
             if done:
                 print(
-                    "episode: {}/{}, score: {}, e: {:.2}".format(
+                    "Episode: {}/{}, Score: {}, Epsilon: {:.2}".format(
                         e, n_episodes - 1, time, agent.epsilon
                     )
                 )
