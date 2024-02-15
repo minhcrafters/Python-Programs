@@ -1,111 +1,202 @@
+import gymnasium as gym
 import numpy as np
-import pandas as pd
-from tabulate import tabulate as tb
+import random
 
+from collections import deque
 from keras.models import Sequential
 from keras.layers import Dense
+from keras.optimizers import Adam
 from keras import callbacks
-# from rl.agents.cem import CEMAgent
+
 # from rl.memory import EpisodeParameterMemory
 
 
-def create_model(input_dim, output_dim):
-    model = Sequential()
-    model.add(Dense(input_dim, input_dim=input_dim, activation="relu"))
-    model.add(Dense(input_dim, activation="relu"))
-    model.add(Dense(input_dim + 2, activation="relu"))
-    model.add(Dense(output_dim + 4, activation="relu"))
-    model.add(Dense(output_dim, activation="sigmoid"))
-    model.compile(loss="mse", optimizer="adam", metrics=["accuracy"])
-
-    # memory = EpisodeParameterMemory(limit=1000, window_length=1)
-
-    # cem = CEMAgent(
-    #     model=model,
-    #     nb_actions=output_dim,
-    #     memory=memory,
-    #     batch_size=32,
-    #     nb_steps_warmup=2000,
-    #     train_interval=50,
-    #     elite_frac=0.05,
-    # )
-
-    # cem.compile()
-
-    print(model.summary())
-    return model
+# def flatten_observation(observation: gym.spaces.Dict) -> np.ndarray:
+#     flattened_observation = []
+#     for key, value in observation.items():
+#         if isinstance(value, dict):
+#             for subkey, subvalue in value.items():
+#                 flattened_observation.extend(subvalue.reshape(-1))
+#         else:
+#             flattened_observation.extend(value.reshape(-1))
+#     return np.array(flattened_observation)
 
 
-# game_state = [fox_x, fox_y, coin_x, coin_y, relative_dist_x, relative_dist_y]
-# 0 - left, 1 - right
-# 2 - up, 3 - down
-# TODO: implement the data
+class DQNAgent:
+    def __init__(self, nb_episodes, state_size, action_size):
+        self.state_size = state_size
+        self.action_size = action_size
+        self.memory = deque(maxlen=nb_episodes)
+        self.gamma = 0.95
+        self.epsilon = 1.0
+        self.epsilon_decay = 0.995
+        self.epsilon_min = 0.01
+        self.learning_rate = 1e-1
+        self.model = self._build_model()
+
+    def _build_model(self):
+        model = Sequential()
+        model.add(Dense(32, activation="relu", input_dim=self.state_size))
+        model.add(Dense(32, activation="relu"))
+        model.add(Dense(self.action_size, activation="linear"))
+        model.compile(loss="mse", optimizer=Adam(learning_rate=self.learning_rate))
+        return model
+
+    def remember(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+
+    def train(self, batch_size):
+        minibatch = random.sample(self.memory, batch_size)
+        for state, action, reward, next_state, done in minibatch:
+            target = reward
+        if not done:
+            target = reward + self.gamma * np.amax(self.model.predict(next_state)[0])
+        target_f = self.model.predict(state)
+        target_f[0][action] = target
+        self.model.fit(state, target_f, epochs=1, verbose=0)
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+
+    def act(self, state):
+        if np.random.rand() <= self.epsilon:
+            return random.randrange(self.action_size)
+        act_values = self.model.predict(state)
+        return np.argmax(act_values[0])
+
+    def save(self, name):
+        self.model.save_weights(name)
 
 
-def preprocess_data(df: pd.DataFrame):
-    game_states = df[
-        [
-            "player_pos_x",
-            "player_pos_y",
-            "player_vel_x",
-            "player_vel_y",
-            "player_accel",
-            "coins_collected",
-            "coins_per_sec",
-            "coin_pos_x",
-            "coin_pos_y",
-            "rel_dist_x",
-            "rel_dist_y",
-        ]
-    ]
-    actions = df[["move_right", "move_left", "move_down", "move_up"]]
-    x = np.array(game_states)
-    y = np.array(actions)
-    return x, y
+# def create_model(env: gym.Env):
+#     model = Sequential()
+#     model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
+#     model.add(Dense(16))
+#     model.add(Activation("relu"))
+#     model.add(Dense(16))
+#     model.add(Activation("relu"))
+#     model.add(Dense(16))
+#     model.add(Activation("relu"))
+#     model.add(Dense(env.action_space.n))
+#     model.add(Activation("linear"))
+
+#     print(model.summary())
+
+#     # model.compile(loss="mse", optimizer="adam", metrics=["accuracy"])
+
+#     # memory = EpisodeParameterMemory(limit=1000, window_length=1)
+
+#     # cem = CEMAgent(
+#     #     model=model,
+#     #     nb_actions=output_dim,
+#     #     memory=memory,
+#     #     batch_size=32,
+#     #     nb_steps_warmup=2000,
+#     #     train_interval=50,
+#     #     elite_frac=0.05,
+#     # )
+
+#     # cem.compile()
+
+#     memory = SequentialMemory(limit=50000, window_length=1)
+#     policy = BoltzmannQPolicy()
+#     dqn = DQNAgent(
+#         model=model,
+#         nb_actions=env.action_space.n,
+#         memory=memory,
+#         nb_steps_warmup=10,
+#         target_model_update=1e-2,
+#         policy=policy,
+#     )
+#     dqn.compile(adam_v2.Adam(learning_rate=1e-1), metrics=["mae"])
+
+#     return dqn
 
 
-def train_model(model: Sequential, x, y, x_test, y_test, epochs=100, batch_size=32):
+# Thank you ChatGPT.
+def calculate_reward(
+    player_position, player_velocity, coins, max_distance, coins_collected
+):
+    # Calculate distance between player and each coin
+    distances = np.linalg.norm(coins - player_position)
+
+    # Find the closest coin
+    closest_coin_distance = np.min(distances)
+
+    # Reward based on proximity to closest coin
+    proximity_reward = 1.0 - closest_coin_distance / max_distance * coins_collected
+
+    # Penalty based on player velocity (optional)
+    velocity_penalty = np.linalg.norm(player_velocity) * 0.01
+
+    # Total reward
+    reward = proximity_reward - velocity_penalty
+
+    # print(reward)
+
+    return reward
+
+
+def train_model(
+    model: DQNAgent, env: gym.Env, epochs=100, batch_size=32, sample_weight=[]
+):
     # earlystopping_train = callbacks.EarlyStopping(
     #     monitor="loss", mode="min", patience=2, restore_best_weights=True
     # )
     earlystopping_test = callbacks.EarlyStopping(
-        monitor="val_loss", mode="min", patience=5, restore_best_weights=True
+        monitor="val_loss",
+        mode="min",
+        patience=5,
+        restore_best_weights=True,
     )
+
     model.fit(
-        x,
-        y,
-        epochs=epochs,
-        batch_size=batch_size,
-        validation_data=(x_test, y_test),
+        env,
+        nb_steps=50000,
+        visualize=True,
+        verbose=2,
         callbacks=[earlystopping_test],
     )
     # model.fit(None, nb_steps=100000, visualize=False)
 
 
-def evaluate_model(model: Sequential, x_test, y_test):
-    scores = model.evaluate(x_test, y_test)
-    return scores
+def evaluate_model(model: DQNAgent, env: gym.Env, nb_episodes=5):
+    model.test(env, nb_episodes=nb_episodes, visualize=True)
 
 
-def make_prediction(model: Sequential, game_state: list):
-    return model.predict(np.array(game_state))[0]
+# Finally, evaluate our algorithm for 5 episodes.
 
 
-def run(dataset_name: str, model: Sequential = None):
-    df = pd.read_csv(f"./dataset/{dataset_name}")
+# def train_model(
+#     model: Sequential, x, y, x_test, y_test, epochs=100, batch_size=32, sample_weight=[]
+# ):
+#     # earlystopping_train = callbacks.EarlyStopping(
+#     #     monitor="loss", mode="min", patience=2, restore_best_weights=True
+#     # )
+#     earlystopping_test = callbacks.EarlyStopping(
+#         monitor="val_loss",
+#         mode="min",
+#         patience=5,
+#         restore_best_weights=True,
+#     )
+#     model.fit(
+#         x,
+#         y,
+#         epochs=epochs,
+#         batch_size=batch_size,
+#         validation_data=(x_test, y_test),
+#         callbacks=[earlystopping_test],
+#         workers=-1,
+#         sample_weight=sample_weight,
+#     )
+#     # model.fit(None, nb_steps=100000, visualize=False)
 
-    df_train = df.iloc[: df.shape[0] // 2, :]
-    df_test = df.iloc[df.shape[0] // 2 :, :]
-    data_train = preprocess_data(df_train)
-    data_test = preprocess_data(df_test)
 
-    if not model:
-        model = create_model(data_train[0].shape[1], data_train[1].shape[1])
+# def run(
+#     env: gym.Env,
+#     model: Sequential = None,
+# ):
+#     train_model(model, env)
 
-    train_model(
-        model, data_train[0], data_train[1], data_test[0], data_test[1], epochs=650
-    )
-
-    scores = evaluate_model(model, data_test[0], data_test[1])
-    print(tb([["Loss", scores[0]], ["Accuracy", scores[1]]]))
-    return model
+#     scores = evaluate_model(model, data_test[0], data_test[1])
+#     print(tb([["Loss", scores[0]], ["Accuracy", scores[1]]]))
+#     return model

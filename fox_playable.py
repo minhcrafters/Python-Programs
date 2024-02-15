@@ -49,7 +49,7 @@ sprites = pygame.sprite.Group()
 accel_slider = pygame_gui.elements.UIHorizontalSlider(
     relative_rect=screen.get_rect(),
     value_range=(0, 1),
-    start_value=1,
+    start_value=0.25,
     manager=manager,
 )
 

@@ -1,22 +1,21 @@
 """
-Reinforcement Supervised Learning neural network model v1
+Reinforcement Unsupervised Learning Neural Network Model v2
 Author: minhcrafters
 With some code from StackOverflow :)
 """
 
 import pygame
-import random
 import nn_helper
 import math
 import os
 
-import pandas as pd
+from gymnasium import Env, spaces
+import numpy as np
 
-from datetime import datetime
 from itertools import product
 from pygame import Vector2
 from pg_utils import draw_text, scale_image
-from nn_helper import make_prediction
+from collections.abc import MutableMapping
 
 SCALE_FACTOR = 0.75
 WIDTH, HEIGHT = 800, 600
@@ -25,180 +24,96 @@ SPEED = 25
 ACCELERATION = 0.25
 
 
-class Actor(pygame.sprite.Sprite):
-    def __init__(
-        self, img: pygame.surface.Surface, steps: int = 12, accel: float = 0.15
-    ):
-        pygame.sprite.Sprite.__init__(self)
-        self.image = img
-        self.steps = steps
-        self.vel = Vector2()
-        self.accel = accel
-        self.bouncy = 0.05
-        self.has_switched_side = False
-        self.rect = img.get_bounding_rect()
+# class Actor(pygame.sprite.Sprite):
+#     def __init__(
+#         self, img: pygame.surface.Surface = None, steps: int = 12, accel: float = 0.15
+#     ):
+#         pygame.sprite.Sprite.__init__(self)
+#         self.image = img if img is not None else None
+#         SPEED = steps
+#         self.vel = Vector2()
+#         ACCELERATION = accel
+#         self.bouncy = 0.05
+#         self.has_switched_side = False
+#         self.rect = img.get_bounding_rect() if img is not None else None
 
-    @property
-    def pos(self) -> Vector2:
-        return Vector2(self.rect.centerx, self.rect.centery)
+#     def set_image(self, img: pygame.surface.Surface):
+#         self.image = img
+#         self.rect = img.get_bounding_rect()
 
-    @pos.setter
-    def pos(self, pos: tuple[float | int, float | int]):
-        self.rect.centerx, self.rect.centery = pos
+#     @property
+#     def pos(self) -> Vector2:
+#         return Vector2(self.rect.centerx, self.rect.centery)
 
-    @pos.setter
-    def pos(self, pos: Vector2):
-        self.rect.centerx, self.rect.centery = pos.x, pos.y
+#     @pos.setter
+#     def pos(self, pos: tuple[float | int, float | int]):
+#         self.rect.centerx, self.rect.centery = pos
 
-    def control(self, right=None, left=None, down=None, up=None):
-        horizontal_input = right - left
-        vertical_input = down - up
+#     @pos.setter
+#     def pos(self, pos: Vector2):
+#         self.rect.centerx, self.rect.centery = pos.x, pos.y
 
-        self.vel.x += horizontal_input * self.accel * self.steps
-        self.vel.y += vertical_input * self.accel * self.steps
+#     def control(self, horizontal_input: int, vertical_input: int):
+#         self.vel.x += horizontal_input * ACCELERATION * SPEED
+#         self.vel.y += vertical_input * ACCELERATION * SPEED
 
-        # print(self.vec.x)
+#         # print(self.vec.x)
 
-        if right and left and down and up:
-            if abs(horizontal_input) <= 0.05:
-                if abs(self.vel.x) > 0.99:
-                    self.vel.x *= 0.9
-                else:
-                    self.vel.x = 0
-        if abs(vertical_input) <= 0.05:
-            if abs(self.vel.y) > 0.99:
-                self.vel.y *= 0.9
-            else:
-                self.vel.y = 0
+#         if horizontal_input:
+#             if abs(horizontal_input) <= 0.05:
+#                 if abs(self.vel.x) > 0.99:
+#                     self.vel.x *= 0.9
+#                 else:
+#                     self.vel.x = 0
+#         if vertical_input:
+#             if abs(vertical_input) <= 0.05:
+#                 if abs(self.vel.y) > 0.99:
+#                     self.vel.y *= 0.9
+#                 else:
+#                     self.vel.y = 0
 
-    def move_rel(self, pos_rel: Vector2):
-        if pos_rel.magnitude() > 0:
-            self.vel.x += self.steps * self.accel * (pos_rel.x / pos_rel.magnitude())
-            self.vel.y += self.steps * self.accel * (pos_rel.y / pos_rel.magnitude())
+#     def move_rel(self, pos_rel: Vector2):
+#         if pos_rel.magnitude() > 0:
+#             self.vel.x += SPEED * ACCELERATION * (pos_rel.x / pos_rel.magnitude())
+#             self.vel.y += SPEED * ACCELERATION * (pos_rel.y / pos_rel.magnitude())
 
-    def update(self):
-        if self.vel.magnitude() >= self.steps:
-            self.vel = self.vel.normalize() * self.steps
+#     def update(self, screen: pygame.surface.Surface):
+#         if self.vel.magnitude() >= SPEED:
+#             self.vel = self.vel.normalize() * SPEED
 
-        self.vel *= 0.99
+#         self.vel *= 0.99
 
-        self.rect.x += self.vel.x * SCALE_FACTOR
-        self.rect.y += self.vel.y * SCALE_FACTOR
+#         self.rect.x += self.vel.x * SCALE_FACTOR
+#         self.rect.y += self.vel.y * SCALE_FACTOR
 
-        if self.vel.x > self.steps:
-            self.vel.x = -self.vel.x + self.bouncy * self.vel.x
-            self.vel.x = self.steps
+#         if self.vel.x > SPEED:
+#             self.vel.x = -self.vel.x + self.bouncy * self.vel.x
+#             self.vel.x = SPEED
 
-        if self.vel.y > self.steps:
-            self.vel.y = -self.vel.y + self.bouncy * self.vel.y
-            self.vel.y = self.steps
+#         if self.vel.y > SPEED:
+#             self.vel.y = -self.vel.y + self.bouncy * self.vel.y
+#             self.vel.y = SPEED
 
-        self.rect.clamp_ip(screen.get_rect())
+#         if (self.vel.x < 0 and not self.has_switched_side) or (
+#             self.vel.x > 0 and self.has_switched_side
+#         ):
+#             self.image = pygame.transform.flip(self.image, True, False)
+#             self.has_switched_side = not self.has_switched_side
 
-        if (self.vel.x < 0 and not self.has_switched_side) or (
-            self.vel.x > 0 and self.has_switched_side
-        ):
-            self.image = pygame.transform.flip(self.image, True, False)
-            self.has_switched_side = not self.has_switched_side
+#         darkened_image = self.image.copy()
+#         darkened_image.fill((0, 0, 0, 128), None, pygame.BLEND_RGBA_MULT)
 
-        darkened_image = self.image.copy()
-        darkened_image.fill((0, 0, 0, 128), None, pygame.BLEND_RGBA_MULT)
+#         dropshadow_offset = 2 + (
+#             self.image.get_width() // (self.image.get_width() / 1.5)
+#         )
 
-        dropshadow_offset = 2 + (
-            self.image.get_width() // (self.image.get_width() / 1.5)
-        )
-
-        screen.blit(
-            darkened_image,
-            (self.rect.x + dropshadow_offset, self.rect.y + dropshadow_offset),
-        )
-
-
-def draw_scores():
-    text = f"{score}"
-    text_x = (WIDTH - font.size(text)[0]) // 2
-    text_y = font.get_height() // 2
-    draw_text(screen, font, text, pos=(text_x, text_y), shadow=True, shadow_offset=3)
-
-
-def draw_timer(player: Actor, offset: int = 0):
-    text = f"Accel: {round(player.accel, 2)} | Speed: {player.steps}"
-    text_x = (WIDTH - smaller_font.size(text)[0]) // 2
-    text_y = (HEIGHT - smaller_font.get_height()) - 80 + offset
-    draw_text(
-        screen,
-        smaller_font,
-        text,
-        pos=(text_x, text_y),
-        shadow=True,
-    )
-
-
-def draw_debug_menu(
-    player: Actor,
-    objects: list[Actor],
-    auto_mode_enabled: bool,
-    coin_collisions: int,
-    coin_sprite: Actor,
-    pos_rel: Vector2,
-):
-    debug_texts = [
-        f"auto_mode: {auto_mode_enabled}",
-        f"pos_player:\n{round(player.pos, 2)}",
-        f"pos_coin:\n{round(coin_sprite.pos, 2)}",
-        f"pos_rel:\n{pos_rel}",
-        f"vel:\n{round(player.vel, 2)}",
-        f"coins/sec: {round(coin_collisions, 1)}",
-        f"{round(pos_rel.magnitude(), 1)}",
-        f"{abs(pos_rel.x)}",
-        f"{abs(pos_rel.y)}",
-    ]
-
-    for object in objects:
-        pygame.draw.rect(screen, "red", object.rect, 1)
-
-    x_line = pygame.draw.line(
-        screen,
-        (255, 0, 0),
-        player.rect.center,
-        (coin_sprite.rect.centerx, player.rect.centery),
-    )
-
-    y_line = pygame.draw.line(
-        screen,
-        (255, 0, 0),
-        coin_sprite.rect.center,
-        (coin_sprite.rect.centerx, player.rect.centery),
-    )
-
-    positions = [
-        (10, 10),
-        (10, 40),
-        (10, 50 + smaller_font.get_height()),
-        (10, 115 + smaller_font.get_height()),
-        (10, 180 + smaller_font.get_height()),
-        (10, 245 + smaller_font.get_height()),
-        pygame.draw.line(
-            screen, (255, 0, 0), player.rect.center, coin_sprite.rect.center
-        ).center,
-        (
-            x_line.centerx - smaller_font.size(f"{abs(pos_rel.x)}")[0] / 2,
-            x_line.centery,
-        ),
-        (
-            y_line.centerx - smaller_font.size(f"{abs(pos_rel.y)}")[0],
-            y_line.centery - smaller_font.size(f"{abs(pos_rel.y)}")[1] / 2,
-        ),
-    ]
-
-    for text, pos in zip(debug_texts, positions):
-        draw_text(
-            screen,
-            text=text,
-            font=smaller_font,
-            pos=pos,
-            shadow=True,
-        )
+#         screen.blit(
+#             darkened_image,
+#             (
+#                 self.rect.x + dropshadow_offset,
+#                 self.rect.y + dropshadow_offset,
+#             ),
+#         )
 
 
 def make_gif(frames_dir, delete_frames=True):
@@ -218,140 +133,141 @@ def make_gif(frames_dir, delete_frames=True):
         shutil.rmtree(frames_dir)
 
 
-def predict(
-    model, player: Actor, accel, coin: Actor, coin_cps: float, pos_rel: Vector2
-):
-    d = {
-        "player_pos_x": player.rect.x,
-        "player_pos_y": player.rect.y,
-        "player_vel_x": player.vel.x,
-        "player_vel_y": player.vel.y,
-        "player_accel": accel,
-        "coins_collected": score,
-        "coins_per_sec": coin_cps,
-        "coin_pos_x": coin.rect.x,
-        "coin_pos_y": coin.rect.y,
-        "rel_dist_x": pos_rel.x,
-        "rel_dist_y": pos_rel.y,
-    }
-    prediction = make_prediction(model, pd.DataFrame({k: [v] for k, v in d.items()}))
-    print(prediction)
-    player.control(
-        right=prediction[0],
-        left=prediction[1],
-        down=prediction[2],
-        up=prediction[3],
-    )
+class CoinCollectorEnv(Env):
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
+    def __init__(self, render_mode="human"):
+        global SPEED
 
-def main(
-    seconds_to_eval: int,
-    fps: int = 60,
-    curr_gen: int = 0,
-    model=None,
-    record_frames: bool = False,
-):
-    pygame.init()
-    pygame.font.init()
-    pygame.joystick.init()
+        super(CoinCollectorEnv, self).__init__()
 
-    global score, font, smaller_font, screen
+        self.action_space = spaces.Discrete(4)  # move right, left, down, up
+        self.observation_space = spaces.Dict(
+            spaces={
+                "player_pos": spaces.Box(
+                    low=0,
+                    high=WIDTH - 1,
+                    shape=(2,),
+                    dtype=int,
+                ),
+                "player_vel": spaces.Box(
+                    low=-SPEED, high=SPEED, shape=(2,), dtype=np.float32
+                ),
+                "coin": spaces.Box(
+                    low=0,
+                    high=WIDTH - 1,
+                    shape=(2,),
+                    dtype=int,
+                ),
+            }
+        )
 
-    score = 0
+        self.observation_space = spaces.flatten_space(self.observation_space)
+        # print(self.observation_space)
 
-    font = pygame.font.Font("./font/MinecraftBold.otf", 40)
-    smaller_font = pygame.font.Font("./font/MinecraftRegular.otf", 20)
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.render_mode = render_mode
 
-    pygame.display.set_caption("Coin Collector (Neural Network Version)")
+        self.player = None
+        self.dt = 0
 
-    pygame.time.set_timer(pygame.USEREVENT, 1000)
+        self.screen = None
+        self.clock = None
 
-    background = pygame.image.load("./img/background.png").convert()
+        self.state = None
+        self.timer = 0
 
-    player_image = pygame.image.load("./img/fox.png").convert_alpha()
-    coin_image = pygame.image.load("./img/coin.png").convert_alpha()
-    ball_image = pygame.image.load("./img/ball.png").convert_alpha()
+        self._action_to_direction = {
+            0: [1, 0],
+            1: [-1, 0],
+            2: [0, 1],
+            3: [0, -1],
+        }
 
-    background = scale_image(background, SCALE_FACTOR)
-    player_image = scale_image(player_image, SCALE_FACTOR)
-    coin_image = scale_image(coin_image, SCALE_FACTOR)
-    ball_image = scale_image(ball_image, 0.1 * SCALE_FACTOR)
+        self.vel = Vector2()
 
-    clock = pygame.time.Clock()
+        # Define any other necessary variables for the environment
+        self.has_switched_side = False
+        self.pos_rel = 0
 
-    coin_x = random.uniform(0, WIDTH / 2)
-    coin_y = random.uniform(0, HEIGHT / 2)
+    def draw_scores(self):
+        text = f"{self.score}"
+        text_x = (WIDTH - self.font.size(text)[0]) // 2
+        text_y = self.font.get_height() // 2
+        draw_text(
+            self.screen,
+            self.font,
+            text,
+            pos=(text_x, text_y),
+            shadow=True,
+            shadow_offset=3,
+        )
 
-    sprites = pygame.sprite.Group()
+    def flatten(self, dictionary: dict, parent_key="", separator="_"):
+        items = []
+        for key, value in dictionary.items():
+            new_key = parent_key + separator + key if parent_key else key
+            if isinstance(value, MutableMapping):
+                items.extend(self.flatten(value, new_key, separator=separator).items())
+            else:
+                items.append((new_key, value))
+        return dict(items)
 
-    timer = seconds_to_eval
+    def draw_timer(self, player, offset: int = 0):
+        text = f"Accel: {round(ACCELERATION, 2)} | Speed: {SPEED}"
+        text_x = (WIDTH - self.smaller_font.size(text)[0]) // 2
+        text_y = (HEIGHT - self.smaller_font.get_height()) - 80 + offset
+        draw_text(
+            self.screen,
+            self.smaller_font,
+            text,
+            pos=(text_x, text_y),
+            shadow=True,
+        )
 
-    screen_width, screen_height = screen.get_size()
-    background_width, background_height = background.get_size()
+    def _get_obs(self):
+        # return np.stack((self.player_loc, self.vel, self.coin_loc))
+        player_loc_list = self.player_loc.tolist()
+        coin_loc_list = self.coin_loc.tolist()
+        array = [
+            player_loc_list[0],
+            player_loc_list[1],
+            coin_loc_list[0],
+            coin_loc_list[1],
+            self.vel.x,
+            self.vel.y,
+        ]
+        return np.array(array, dtype=np.float64)
+        # return (
+        #     player_loc_list[0],
+        #     player_loc_list[1],
+        #     coin_loc_list[0],
+        #     coin_loc_list[1],
+        #     self.vel.x,
+        #     self.vel.y,
+        # )
 
-    coin_collisions = 0
+    def _get_info(self):
+        return {
+            "rel_dist": self.pos_rel,
+        }
 
-    player = Actor(
-        player_image,
-        accel=ACCELERATION,
-        steps=SPEED,
-    )
+    def step(self, action, curr_gen: int):
+        assert self.action_space.contains(
+            action
+        ), f"{action!r} ({type(action)}) invalid"
 
-    player.rect.centerx = WIDTH // 2
-    player.rect.centery = HEIGHT // 2
+        done = False
 
-    coin = Actor(coin_image)
-
-    # ball_obj = Actor(ball_image, steps=speed_slider.get_current_value())
-
-    # ball_obj.rect.centerx = random.randint(0, WIDTH)
-    # ball_obj.rect.centery = random.randint(0, HEIGHT)
-
-    sprites.add(player)
-    sprites.add(coin)
-    # sprites.add(ball_obj)
-
-    start_time = pygame.time.get_ticks()
-    passed_time = 1
-
-    initial_vel = player.vel
-    accel = 0
-
-    frame_dir = "frames"
-    os.makedirs(frame_dir, exist_ok=True)
-    frame_num = 0
-
-    auto_mode = False
-    done_reset = True
-    debug = False
-    _counter = 1000
-    coin_cps = 0
-    sliders_enabled = False
-
-    game_dataset = []
-
-    pos_rel = Vector2(0, 0)
-    # thread = threading.Thread(
-    #     target=predict, args=[create_dataset, model, player, coin, pos_rel]
-    # )
-    # thread.start()
-    running = True
-    while running:
-        t = clock.tick(fps)
-
-        if timer <= 0:
-            running = False
+        if self.timer <= 0:
+            done = True
 
         # screen.fill((59, 177, 227))
 
-        tiles_x = math.ceil(screen_width / background_width / SCALE_FACTOR)
-        tiles_y = math.ceil(screen_height / background_height / SCALE_FACTOR)
+        self.pos_rel = np.linalg.norm(self.coin_loc - self.player_loc)
 
-        for x, y in product(range(tiles_x), range(tiles_y)):
-            screen.blit(background, (x * background_width, y * background_height))
-
-        pos_rel = Vector2(coin.rect.center) - Vector2(player.rect.center)
+        # self.player.pos.x = self.player_loc[0]
+        # self.player.pos.y = self.player_loc[1]
 
         # print(player.rect.right)
 
@@ -364,78 +280,66 @@ def main(
         # if player.rect.top >= HEIGHT:
         #     player.rect.bottom = 0
 
-        if player.rect.left <= 0 or player.rect.right >= WIDTH:
-            player.vel.x = -player.vel.x
-        if player.rect.top <= 0 or player.rect.bottom >= HEIGHT:
-            player.vel.y = -player.vel.y
+        # if self.player.rect.left <= 0 or self.player.rect.right >= WIDTH:
+        #     self.vel.x = -self.vel.x
+        # if self.player.rect.top <= 0 or self.player.rect.bottom >= HEIGHT:
+        #     self.vel.y = -self.vel.y
 
         # if ball_obj.rect.left <= 0 or ball_obj.rect.right >= WIDTH:
         #     ball_obj.vel.x = -ball_obj.vel.x
         # if ball_obj.rect.top <= 0 or ball_obj.rect.bottom >= HEIGHT:
         #     ball_obj.vel.y = -ball_obj.vel.y
 
-        if auto_mode:
-            # mouse = pygame.mouse.get_pos()
-            # player.move_rel(mouse[0], mouse[1])
-            player.move_rel(pos_rel)
-            # ball_obj.move_rel(pos_rel_ball)
-            done_reset = False
-        else:
-            if not done_reset:
-                if abs(player.vel.x) > 0.99:
-                    player.vel.x *= 0.9
-                else:
-                    player.vel.x = 0
+        direction = self._action_to_direction[action]
 
-                if abs(player.vel.y) > 0.99:
-                    player.vel.y *= 0.9
+        # self.player.control(*direction)
+
+        self.vel.x += direction[0] * ACCELERATION * SPEED
+        self.vel.y += direction[1] * ACCELERATION * SPEED
+
+        # print(self.vec.x)
+
+        if direction[0]:
+            if abs(direction[0]) <= 0.05:
+                if abs(self.vel.x) > 0.99:
+                    self.vel.x *= 0.9
                 else:
-                    player.vel.y = 0
-                done_reset = True
-            if model:
-                predict(model, player, accel, coin, coin_cps, pos_rel)
-            else:
-                auto_mode = True
+                    self.vel.x = 0
+        if direction[1]:
+            if abs(direction[1]) <= 0.05:
+                if abs(self.vel.y) > 0.99:
+                    self.vel.y *= 0.9
+                else:
+                    self.vel.y = 0
+
+        if self.vel.magnitude() >= SPEED:
+            self.vel = self.vel.normalize() * SPEED
+
+        self.vel *= 0.99
+
+        self.player_loc[0] += self.vel.x * SCALE_FACTOR
+        self.player_loc[1] += self.vel.y * SCALE_FACTOR
+
+        if self.vel.x > SPEED:
+            self.vel.x = -self.vel.x + 0.9 * self.vel.x
+            self.vel.x = SPEED
+
+        if self.vel.y > SPEED:
+            self.vel.y = -self.vel.y + 0.9 * self.vel.y
+            self.vel.y = SPEED
 
         # coin_sprite.control()
 
-        _counter -= t
-        if _counter < 0:
-            passed_time = pygame.math.clamp(
-                passed_time, 1, (pygame.time.get_ticks() - start_time) / 1000
-            )
-            final_vel = player.vel
-            coin_cps = coin_collisions / passed_time
-            accel = (final_vel - initial_vel) / passed_time
-            accel = math.sqrt(accel.x**2 + accel.y**2)
-            initial_vel = final_vel
-            coin_collisions = 0
-            start_time = pygame.time.get_ticks()
-            _counter += 1000
+        # coin_loc = self.coin_loc.tolist()
+        # self.coin.rect.center = (coin_loc[0], coin_loc[1])
+        # coin.rect.center = pygame.mouse.get_pos()
 
-        normalized = (
-            player.vel.normalize()
-            if (player.vel.x, player.vel.y) > (0, 0)
-            else player.vel
-        )
+        # print(self.pos_rel)
 
-        events = pygame.event.get()
-        for event in events:
-            if event.type == pygame.QUIT or (
-                event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
-            ):
-                running = False
-
-            if event.type == pygame.USEREVENT:
-                timer -= 1
-
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_F3:
-                    debug = not debug
-
-                if event.key == pygame.K_r:
-                    player.rect.centerx = WIDTH // 2
-                    player.rect.centery = HEIGHT // 2
+        if self.pos_rel <= 30:
+            self.score += 1
+            self.coin_collisions += 1
+            self.coin_loc = self.np_random.integers(0, WIDTH - 10, size=2, dtype=int)
 
         # ball_obj.vel.y += 1
 
@@ -448,209 +352,377 @@ def main(
         #     ball_obj.vel = v1
         #     # player.vel = v2
 
-        coin.rect.center = (coin_x, coin_y)
-        # coin.rect.center = pygame.mouse.get_pos()
+        # self.coin_x = random.uniform(
+        #     60,
+        #     WIDTH
+        #     - self.player.rect.x
+        #     + (-20 if self.coin.rect.x > WIDTH // 2 else 20),
+        # )
+        # self.coin_y = random.uniform(
+        #     60,
+        #     HEIGHT
+        #     - self.player.rect.y
+        #     + (-20 if self.coin.rect.y > HEIGHT // 2 else 20),
+        # )
 
-        if coin.rect.colliderect(player.rect):
-            score += 1
-            coin_collisions += 1
-            coin_x = random.uniform(
-                60,
-                WIDTH - player.rect.x + (-20 if coin.rect.x > WIDTH // 2 else 20),
-            )
-            coin_y = random.uniform(
-                60,
-                HEIGHT - player.rect.y + (-20 if coin.rect.y > HEIGHT // 2 else 20),
-            )
+        # if (
+        #     coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
+        # ) or (
+        #     coin_sprite.rect.centery <= 10
+        #     or coin_sprite.rect.centery >= HEIGHT - 20
+        # ):
+        #     coin_x = random.uniform(0, WIDTH - player.rect.x - 50)
+        #     coin_y = random.uniform(0, HEIGHT - player.rect.y - 50)
 
-            # if (
-            #     coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
-            # ) or (
-            #     coin_sprite.rect.centery <= 10
-            #     or coin_sprite.rect.centery >= HEIGHT - 20
-            # ):
-            #     coin_x = random.uniform(0, WIDTH - player.rect.x - 50)
-            #     coin_y = random.uniform(0, HEIGHT - player.rect.y - 50)
-
-        player.update()
-        coin.update()
         # ball_obj.update()
-        sprites.draw(screen)
-        # screen.blit(coin, coin_rect)
 
-        if debug:
-            draw_debug_menu(player, [player, coin], auto_mode, coin_cps, coin, pos_rel)
-        else:
+        observation = self._get_obs()
+        info = self._get_info()
+
+        self.reward = nn_helper.calculate_reward(
+            np.array([observation[0], observation[1]]),
+            np.array([observation[2], observation[3]]),
+            np.array([observation[4], observation[5]]),
+            info["rel_dist"],
+            self.coin_collisions,
+        )
+
+        if pygame.event.get(pygame.USEREVENT):
+            self.timer -= 1
+
+        if self.render_mode == "human":
+            self._render_frame(curr_gen=curr_gen)
+
+        return observation, self.reward, done, {}, info
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+
+        self.score = 0
+        self.timer = 20
+
+        self.player_loc = np.array([WIDTH // 2, HEIGHT // 2])
+
+        self.coin_loc = self.np_random.integers(0, HEIGHT - 20, size=2, dtype=int)
+
+        # while np.array_equal(self.coin_loc, self.player_loc):
+        #     self.coin_loc = self.np_random.integers(0, HEIGHT - 20, size=2, dtype=int)
+
+        # self.current_state[2] = self.coin_loc
+        # self.current_state[0] = self.player_loc
+
+        # self.initial_vel = self.vel
+
+        self.coin_collisions = 0
+
+        # ball_obj = Actor(ball_image, steps=speed_slider.get_current_value())
+
+        # ball_obj.rect.centerx = random.randint(0, WIDTH)
+        # ball_obj.rect.centery = random.randint(0, HEIGHT)
+
+        # sprites.add(ball_obj)
+
+        self.auto_mode = False
+        self.done_reset = True
+        self.debug = False
+        self._counter = 1000
+        self.coin_cps = 0
+
+        self.reward = 0
+
+        observation = self._get_obs()
+        info = self._get_info()
+
+        return observation, info
+
+    def draw_drop_shadow(
+        self,
+        screen: pygame.Surface,
+        player_rect: pygame.Rect,
+        player_image: pygame.Surface,
+    ):
+        darkened_image = player_image.copy()
+        darkened_image.fill((0, 0, 0, 128), None, pygame.BLEND_RGBA_MULT)
+
+        dropshadow_offset = 2 + (
+            player_image.get_width() // (player_image.get_width() / 1.5)
+        )
+
+        screen.blit(
+            darkened_image,
+            (
+                player_rect.x + dropshadow_offset,
+                player_rect.y + dropshadow_offset,
+            ),
+        )
+
+    def get_pos(self, pos: tuple[float | int, float | int]) -> Vector2:
+        return Vector2(pos[0], pos[1])
+
+    def render(self, curr_gen: int):
+        return self._render_frame(curr_gen)
+
+    def _render_frame(self, curr_gen: int):
+        if self.screen is None and self.render_mode == "human":
+            pygame.init()
+            pygame.font.init()
+            pygame.display.init()
+
+            self.font = pygame.font.Font("./font/MinecraftBold.otf", 40)
+            self.smaller_font = pygame.font.Font("./font/MinecraftRegular.otf", 20)
+            self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
+            pygame.display.set_caption("Coin Collector (Neural Network Version)")
+
+            pygame.time.set_timer(pygame.USEREVENT, 1000)
+
+            self.background = pygame.image.load("./img/background.png").convert()
+
+            self.player_image = pygame.image.load("./img/fox.png").convert_alpha()
+            self.coin_image = pygame.image.load("./img/coin.png").convert_alpha()
+
+            self.background = scale_image(self.background, SCALE_FACTOR)
+            self.player_image = scale_image(self.player_image, SCALE_FACTOR)
+            self.coin_image = scale_image(self.coin_image, SCALE_FACTOR)
+
+            self.screen_width, self.screen_height = self.screen.get_size()
+            self.background_width, self.background_height = self.background.get_size()
+
+            self.start_time = pygame.time.get_ticks()
+            self.passed_time = 1
+        if self.clock is None and self.render_mode == "human":
+            self.clock = pygame.time.Clock()
+
+        if self.render_mode == "human":
+            tiles_x = math.ceil(
+                self.screen_width / self.background_width / SCALE_FACTOR
+            )
+            tiles_y = math.ceil(
+                self.screen_height / self.background_height / SCALE_FACTOR
+            )
+
+            for x, y in product(range(tiles_x), range(tiles_y)):
+                self.screen.blit(
+                    self.background,
+                    (x * self.background_width, y * self.background_height),
+                )
+
+            # self.player.rect.center = (self.player_loc[0], self.player_loc[1])
+            # self.coin.rect.center = (self.coin_loc[0], self.coin_loc[1])
+            self.player_rect = self.player_image.get_bounding_rect()
+            self.coin_rect = self.coin_image.get_bounding_rect()
+
+            self.player_rect.center = (self.player_loc[0], self.player_loc[1])
+            self.coin_rect.center = (self.coin_loc[0], self.coin_loc[1])
+
+            if (self.vel.x < 0 and not self.has_switched_side) or (
+                self.vel.x > 0 and self.has_switched_side
+            ):
+                self.player_image = pygame.transform.flip(
+                    self.player_image, True, False
+                )
+                self.has_switched_side = not self.has_switched_side
+
+            self.player_rect.clamp_ip(self.screen.get_rect())
+
+            self.player_loc = np.array(
+                [self.player_rect.centerx, self.player_rect.centery]
+            )
+
+            self.coin_loc = np.array([self.coin_rect.centerx, self.coin_rect.centery])
+
+            self.draw_drop_shadow(self.screen, self.player_rect, self.player_image)
+            self.draw_drop_shadow(self.screen, self.coin_rect, self.coin_image)
+
+            self.screen.blit(self.player_image, self.player_rect)
+            self.screen.blit(self.coin_image, self.coin_rect)
+
+            # screen.blit(coin, coin_rect)
+
+            debug_texts = [
+                "pos_player:",
+                f"{round(self.get_pos(self.player_rect.center), 2)}",
+                "pos_coin:",
+                f"{round(self.get_pos(self.coin_rect.center), 2)}",
+                "vel:",
+                f"{round(self.vel, 2)}",
+                "pos_rel:",
+                f"{round(self.pos_rel, 2)}",
+                f"coins/sec: {round(self.coin_collisions, 1)}",
+                # f"{round(self.pos_rel, 1)}",
+            ]
+
+            # positions = [
+            #     (WIDTH - 10, 10),
+            #     (WIDTH - 10, 40 + self.smaller_font.get_height()),
+            #     (WIDTH - 10, 50 + self.smaller_font.get_height()),
+            #     (WIDTH - 10, 115 + self.smaller_font.get_height()),
+            #     (WIDTH - 10, 180 + self.smaller_font.get_height()),
+            #     # (WIDTH - 10, 245 + self.smaller_font.get_height()),
+            # ]
+
+            for i in range(len(debug_texts)):
+                draw_text(
+                    self.screen,
+                    text=debug_texts[i],
+                    font=self.smaller_font,
+                    anchor="topright",
+                    pos=(WIDTH - 10, 10 + self.smaller_font.get_height() * i * 1.235),
+                    shadow=True,
+                )
+
+            self.draw_scores()
+
+            self.draw_timer(self.player, 70)
+
             draw_text(
-                screen,
-                smaller_font,
-                f"{'Gen #{}'.format(curr_gen) if curr_gen else 'Running traditional bot'}\nTime left: {timer}",
+                self.screen,
+                self.smaller_font,
+                f"{'Gen #{}'.format(curr_gen)}\nTime left: {self.timer}",
                 pos=(10, 10),
                 shadow=True,
             )
 
-        draw_scores()
+            self.normalized = (
+                self.vel.normalize() if (self.vel.x, self.vel.y) != (0, 0) else self.vel
+            )
 
-        draw_timer(player, 70 if not sliders_enabled else 0)
+            opacity_right = (
+                128
+                if self.vel.x < SPEED * self.normalized.x - 1
+                else 255
+                if self.vel.x > 0
+                else 128
+            )
+            opacity_left = (
+                128
+                if self.vel.x > -(SPEED * self.normalized.x - 1)
+                else 255
+                if self.vel.x < 0
+                else 128
+            )
+            opacity_down = (
+                128
+                if self.vel.y < SPEED * self.normalized.y - 1
+                else 255
+                if self.vel.y > 0
+                else 128
+            )
+            opacity_up = (
+                128
+                if self.vel.y > -(SPEED * self.normalized.y - 1)
+                else 255
+                if self.vel.y < 0
+                else 128
+            )
 
-        opacity_right = (
-            128
-            if player.vel.x < player.steps * normalized.x - 1
-            else 255
-            if player.vel.x > 0
-            else 128
-        )
-        opacity_left = (
-            128
-            if player.vel.x > -(player.steps * normalized.x - 1)
-            else 255
-            if player.vel.x < 0
-            else 128
-        )
-        opacity_down = (
-            128
-            if player.vel.y < player.steps * normalized.y - 1
-            else 255
-            if player.vel.y > 0
-            else 128
-        )
-        opacity_up = (
-            128
-            if player.vel.y > -(player.steps * normalized.y - 1)
-            else 255
-            if player.vel.y < 0
-            else 128
-        )
+            # the fix for a strange bug
+            if self.vel.x < 0 and self.vel.y > 0:
+                opacity_down = 255
+                opacity_left = 255
+            if self.vel.x > 0 and self.vel.y < 0:
+                opacity_up = 255
+                opacity_right = 255
 
-        # the fix for a strange bug
-        if player.vel.x < 0 and player.vel.y > 0:
-            opacity_down = 255
-            opacity_left = 255
-        if player.vel.x > 0 and player.vel.y < 0:
-            opacity_up = 255
-            opacity_right = 255
+            # print(player.vec.xy, opacity_down, opacity_left)
 
-        # print(player.vec.xy, opacity_down, opacity_left)
+            right = draw_text(
+                self.screen,
+                self.smaller_font,
+                text="Right",
+                opacity=opacity_right,
+                anchor="bottomleft",
+                pos=(10, HEIGHT - 10),
+                shadow=True,
+            )
 
-        right = draw_text(
-            screen,
-            smaller_font,
-            text="Right",
-            opacity=opacity_right,
-            anchor="bottomleft",
-            pos=(10, HEIGHT - 10),
-            shadow=True,
-        )
+            left = draw_text(
+                self.screen,
+                self.smaller_font,
+                text="Left",
+                opacity=opacity_left,
+                anchor="bottomleft",
+                pos=(10, HEIGHT - 10 - right.get_height()),
+                shadow=True,
+            )
 
-        left = draw_text(
-            screen,
-            smaller_font,
-            text="Left",
-            opacity=opacity_left,
-            anchor="bottomleft",
-            pos=(10, HEIGHT - 10 - right.get_height()),
-            shadow=True,
-        )
+            down = draw_text(
+                self.screen,
+                self.smaller_font,
+                text="Down",
+                opacity=opacity_down,
+                anchor="bottomleft",
+                pos=(10, HEIGHT - 10 - right.get_height() - left.get_height()),
+                shadow=True,
+            )
 
-        down = draw_text(
-            screen,
-            smaller_font,
-            text="Down",
-            opacity=opacity_down,
-            anchor="bottomleft",
-            pos=(10, HEIGHT - 10 - right.get_height() - left.get_height()),
-            shadow=True,
-        )
+            draw_text(
+                self.screen,
+                self.smaller_font,
+                text="Up",
+                opacity=opacity_up,
+                anchor="bottomleft",
+                pos=(
+                    10,
+                    HEIGHT
+                    - 10
+                    - right.get_height()
+                    - left.get_height()
+                    - down.get_height(),
+                ),
+                shadow=True,
+            )
+            pygame.event.pump()
+            pygame.display.flip()
+            self.dt = self.clock.tick(self.metadata["render_fps"])
 
-        draw_text(
-            screen,
-            smaller_font,
-            text="Up",
-            opacity=opacity_up,
-            anchor="bottomleft",
-            pos=(
-                10,
-                HEIGHT
-                - 10
-                - right.get_height()
-                - left.get_height()
-                - down.get_height(),
-            ),
-            shadow=True,
-        )
-
-        # print(
-        #     player.vel.normalize()
-        #     if (player.vel.x, player.vel.y) != (0, 0)
-        #     else player.vel
-        # )
-
-        # game_state = [fox_x, fox_y, coin_x, coin_y, relative_dist_x, relative_dist_y]
-        # 0 - left, 1 - right
-        # 2 - up, 3 - down
-        # TODO: implement the data
-        game_state = [
-            player.rect.x,
-            player.rect.y,
-            player.vel.x,
-            player.vel.y,
-            accel,
-            score,
-            coin_cps,
-            coin.rect.x,
-            coin.rect.y,
-            pos_rel.x,
-            pos_rel.y,
-        ]
-        if player.vel.x != 0 or player.vel.y != 0:
-            norm_x = abs(player.vel.normalize().x)
-            norm_y = abs(player.vel.normalize().y)
-            output_action = [
-                norm_x if pos_rel.x > 0 else 0,
-                norm_x if pos_rel.x < 0 else 0,
-                norm_y if pos_rel.y > 0 else 0,
-                norm_y if pos_rel.y < 0 else 0,
-            ]
-        else:
-            output_action = [0, 0, 0, 0]
-
-        game_dataset.append([game_state, output_action])
-
-        if record_frames:
-            pygame.image.save(screen, os.path.join(frame_dir, f"frame_{frame_num}.png"))
-            frame_num += 1
-
-        pygame.display.flip()
-
-    pygame.quit()
-
-    name = f"results_{player.steps}_{str(float(player.accel)).replace('.', '')}_{datetime.today().strftime('%d%m%Y')}_{datetime.today().strftime('%H%M%S')}.csv"
-
-    with open(
-        f"./dataset/{name}",
-        "w",
-    ) as f:
-        f.write(
-            "player_pos_x,player_pos_y,player_vel_x,player_vel_y,player_accel,coins_collected,coins_per_sec,coin_pos_x,coin_pos_y,rel_dist_x,rel_dist_y,move_right,move_left,move_down,move_up\n"
-        )
-        for data in game_dataset:
-            f.write(",".join(map(str, data[0] + data[1])) + "\n")
-
-    model = nn_helper.run(name, model if model else None)
-
-    if record_frames:
-        make_gif(frame_dir)
-
-    return model, name
+    def close(self):
+        if self.screen is not None:
+            pygame.display.quit()
+            pygame.quit()
 
 
 if __name__ == "__main__":
-    gens = 10
-    seconds_to_eval = 20
+    env = CoinCollectorEnv(render_mode="human")
+    # from gymnasium.utils.env_checker import check_env
 
-    result, name = main(seconds_to_eval, 60)
-    for i in range(gens + 1):
-        print(result)
-        print(name)
-        result, name = main(seconds_to_eval, 60, i, result)
-    result.save("./model/model_{}.keras".format(name[8:-4]))
+    state_size = env.observation_space.shape[0]
+    action_size = env.action_space.n
+    n_episodes = 1000
+    batch_size = 32
+
+    agent = nn_helper.DQNAgent(n_episodes, state_size, action_size)
+
+    # check_env(env)
+    for e in range(n_episodes):
+        state, info = env.reset()
+        state = np.reshape(state, [1, state_size])
+
+        done = False
+        time = 0
+        while not done:
+            env.render(e)
+            action = agent.act(state)
+            next_state, reward, done, _, info = env.step(action, e)
+            reward = reward if not done else -10
+            next_state = np.reshape(next_state, [1, state_size])
+            agent.remember(state, action, reward, next_state, done)
+            state = next_state
+            if done:
+                print(
+                    "episode: {}/{}, score: {}, e: {:.2}".format(
+                        e, n_episodes - 1, time, agent.epsilon
+                    )
+                )
+            time += 1
+        if len(agent.memory) > batch_size:
+            agent.train(batch_size)
+        if e % 50 == 0:
+            agent.save("./model/weights_" + "{:04d}".format(e) + ".hdf5")
+    # model = nn_helper.create_model(env)
+    # nn_helper.train_model(model, env)
+    # nn_helper.evaluate_model(model, env)
+
+    # model.save_weights(
+    #     "./model/dqn_{}_weights.h5f".format("coin_collector"), overwrite=True
+    # )
