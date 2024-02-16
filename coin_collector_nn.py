@@ -20,7 +20,7 @@ file_writer.set_as_default()
 tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
 
 if __name__ == "__main__":
-    env = CoinCollectorEnv()
+    env = CoinCollectorEnv("human")
 
     N = 20
     batch_size = 5
@@ -35,7 +35,7 @@ if __name__ == "__main__":
         input_dims=env.observation_space.shape,
     )
 
-    n_games = 300
+    n_games = 900
 
     best_score = env.reward_range[0]
     score_history = []

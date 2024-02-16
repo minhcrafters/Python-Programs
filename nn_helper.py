@@ -161,7 +161,7 @@ class CriticNetwork(keras.Model):
 
 TELEPORT_REWARD = 0.1  # Bonus or penalty for teleportation
 MIN_DISTANCE_PENALTY = -1  # Minimum penalty for being far from a coin
-MAX_DISTANCE_PENALTY = 0  # Maximum penalty for being far from a coin
+MAX_DISTANCE_PENALTY = 1  # Maximum penalty for being far from a coin
 
 
 def calculate_reward(
@@ -182,7 +182,6 @@ def calculate_reward(
             if np.sum(agent_position) > np.sum(previous_agent_position)
             else np.subtract(previous_agent_position, agent_position)
         )
-        * 0.1
     )
 
     # Calculate total reward

@@ -4,7 +4,6 @@ Author: minhcrafters
 With some code from StackOverflow :)
 """
 
-import time
 import pygame
 import math
 import os
