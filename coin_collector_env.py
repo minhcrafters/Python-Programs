@@ -4,116 +4,44 @@ Author: minhcrafters
 With some code from StackOverflow :)
 """
 
+import time
 import pygame
-import nn_helper
 import math
 import os
 
 from gymnasium import Env, spaces
+from nn_helper import calculate_reward
 import numpy as np
-
 from itertools import product
 from pygame import Vector2
 from pg_utils import draw_text, scale_image
 from collections.abc import MutableMapping
+from threading import Thread, Event
+
+
+class Repeat(Thread):
+    def __init__(self, delay, function, *args, **kwargs):
+        Thread.__init__(self)
+        self.abort = Event()
+        self.delay = delay
+        self.args = args
+        self.kwargs = kwargs
+        self.function = function
+
+    def stop(self):
+        self.abort.set()
+
+    def run(self):
+        while not self.abort.isSet():
+            self.function(*self.args, **self.kwargs)
+            self.abort.wait(self.delay)
+
 
 SCALE_FACTOR = 0.75
 WIDTH, HEIGHT = 800, 600
 
 SPEED = 25
 ACCELERATION = 0.25
-
-
-# class Actor(pygame.sprite.Sprite):
-#     def __init__(
-#         self, img: pygame.surface.Surface = None, steps: int = 12, accel: float = 0.15
-#     ):
-#         pygame.sprite.Sprite.__init__(self)
-#         self.image = img if img is not None else None
-#         SPEED = steps
-#         self.vel = Vector2()
-#         ACCELERATION = accel
-#         self.bouncy = 0.05
-#         self.has_switched_side = False
-#         self.rect = img.get_bounding_rect() if img is not None else None
-
-#     def set_image(self, img: pygame.surface.Surface):
-#         self.image = img
-#         self.rect = img.get_bounding_rect()
-
-#     @property
-#     def pos(self) -> Vector2:
-#         return Vector2(self.rect.centerx, self.rect.centery)
-
-#     @pos.setter
-#     def pos(self, pos: tuple[float | int, float | int]):
-#         self.rect.centerx, self.rect.centery = pos
-
-#     @pos.setter
-#     def pos(self, pos: Vector2):
-#         self.rect.centerx, self.rect.centery = pos.x, pos.y
-
-#     def control(self, horizontal_input: int, vertical_input: int):
-#         self.vel.x += horizontal_input * ACCELERATION * SPEED
-#         self.vel.y += vertical_input * ACCELERATION * SPEED
-
-#         # print(self.vec.x)
-
-#         if horizontal_input:
-#             if abs(horizontal_input) <= 0.05:
-#                 if abs(self.vel.x) > 0.99:
-#                     self.vel.x *= 0.9
-#                 else:
-#                     self.vel.x = 0
-#         if vertical_input:
-#             if abs(vertical_input) <= 0.05:
-#                 if abs(self.vel.y) > 0.99:
-#                     self.vel.y *= 0.9
-#                 else:
-#                     self.vel.y = 0
-
-#     def move_rel(self, pos_rel: Vector2):
-#         if pos_rel.magnitude() > 0:
-#             self.vel.x += SPEED * ACCELERATION * (pos_rel.x / pos_rel.magnitude())
-#             self.vel.y += SPEED * ACCELERATION * (pos_rel.y / pos_rel.magnitude())
-
-#     def update(self, screen: pygame.surface.Surface):
-#         if self.vel.magnitude() >= SPEED:
-#             self.vel = self.vel.normalize() * SPEED
-
-#         self.vel *= 0.99
-
-#         self.rect.x += self.vel.x * SCALE_FACTOR
-#         self.rect.y += self.vel.y * SCALE_FACTOR
-
-#         if self.vel.x > SPEED:
-#             self.vel.x = -self.vel.x + self.bouncy * self.vel.x
-#             self.vel.x = SPEED
-
-#         if self.vel.y > SPEED:
-#             self.vel.y = -self.vel.y + self.bouncy * self.vel.y
-#             self.vel.y = SPEED
-
-#         if (self.vel.x < 0 and not self.has_switched_side) or (
-#             self.vel.x > 0 and self.has_switched_side
-#         ):
-#             self.image = pygame.transform.flip(self.image, True, False)
-#             self.has_switched_side = not self.has_switched_side
-
-#         darkened_image = self.image.copy()
-#         darkened_image.fill((0, 0, 0, 128), None, pygame.BLEND_RGBA_MULT)
-
-#         dropshadow_offset = 2 + (
-#             self.image.get_width() // (self.image.get_width() / 1.5)
-#         )
-
-#         screen.blit(
-#             darkened_image,
-#             (
-#                 self.rect.x + dropshadow_offset,
-#                 self.rect.y + dropshadow_offset,
-#             ),
-#         )
 
 
 def make_gif(frames_dir, delete_frames=True):
@@ -177,6 +105,8 @@ class CoinCollectorEnv(Env):
 
         self.state = None
         self.timer = 0
+
+        self.repeat_every = None
 
         self._action_to_direction = {
             0: [1, 0],
@@ -251,10 +181,14 @@ class CoinCollectorEnv(Env):
     def _get_info(self):
         return {
             "rel_dist": self.pos_rel,
+            "coins_collected": self.score,
         }
 
     def _normalize(self, x, min_x, max_x):
         return (x - min_x) / (max_x - min_x)
+
+    def _decrease_timer(self):
+        self.timer -= 1
 
     def step(self, action, curr_gen: int):
         assert self.action_space.contains(
@@ -267,8 +201,6 @@ class CoinCollectorEnv(Env):
             done = True
 
         # screen.fill((59, 177, 227))
-
-        self.pos_rel = np.linalg.norm(self.coin_loc - self.player_loc)
 
         # self.player.pos.x = self.player_loc[0]
         # self.player.pos.y = self.player_loc[1]
@@ -301,6 +233,8 @@ class CoinCollectorEnv(Env):
         self.vel.x += direction[0] * ACCELERATION * SPEED
         self.vel.y += direction[1] * ACCELERATION * SPEED
 
+        self.pos_rel = np.linalg.norm(self.coin_loc - self.player_loc)
+
         # print(self.vec.x)
 
         if direction[0]:
@@ -321,68 +255,31 @@ class CoinCollectorEnv(Env):
 
         self.vel *= 0.99
 
+        prev_player_loc = self.player_loc
+
         self.player_loc[0] += self.vel.x * SCALE_FACTOR
         self.player_loc[1] += self.vel.y * SCALE_FACTOR
 
-        if self.vel.x > SPEED:
-            self.vel.x = -self.vel.x + 0.9 * self.vel.x
-            self.vel.x = SPEED
+        # if self.vel.x > SPEED:
+        #     self.vel.x = -self.vel.x + 0.9 * self.vel.x
+        #     self.vel.x = SPEED
 
-        if self.vel.y > SPEED:
-            self.vel.y = -self.vel.y + 0.9 * self.vel.y
-            self.vel.y = SPEED
+        # if self.vel.y > SPEED:
+        #     self.vel.y = -self.vel.y + 0.9 * self.vel.y
+        #     self.vel.y = SPEED
 
-        # coin_sprite.control()
-
-        # coin_loc = self.coin_loc.tolist()
-        # self.coin.rect.center = (coin_loc[0], coin_loc[1])
-        # coin.rect.center = pygame.mouse.get_pos()
-
-        # print(self.pos_rel)
-
-        self.reward = (
-            -self._normalize(float(self.pos_rel), 0, WIDTH) + self.score * 10 + 1
+        self.reward = calculate_reward(
+            self.player_loc,
+            self.coin_loc,
+            self.score,
+            previous_agent_position=prev_player_loc,
         )
+
+        # self.reward = 1.0 / self.pos_rel + self.coin_collisions * (curr_gen + 1)
 
         if self.pos_rel <= 38.5:
             self.score += 1
-            self.coin_collisions += 1
             self.coin_loc = self.np_random.integers(0, HEIGHT - 20, size=2, dtype=int)
-
-        # ball_obj.vel.y += 1
-
-        # if player.rect.colliderect(ball_obj.rect):
-        #     print("hit")
-        #     pos = Vector2(ball_obj.rect.center) - Vector2(player.rect.center)
-        #     v1 = ball_obj.vel.reflect(pos) * 2
-        #     # v2 = player.vel.reflect(-pos)
-        #     print(v1)
-        #     ball_obj.vel = v1
-        #     # player.vel = v2
-
-        # self.coin_x = random.uniform(
-        #     60,
-        #     WIDTH
-        #     - self.player.rect.x
-        #     + (-20 if self.coin.rect.x > WIDTH // 2 else 20),
-        # )
-        # self.coin_y = random.uniform(
-        #     60,
-        #     HEIGHT
-        #     - self.player.rect.y
-        #     + (-20 if self.coin.rect.y > HEIGHT // 2 else 20),
-        # )
-
-        # if (
-        #     coin_sprite.rect.centerx <= 10 or coin_sprite.rect.centerx >= WIDTH - 20
-        # ) or (
-        #     coin_sprite.rect.centery <= 10
-        #     or coin_sprite.rect.centery >= HEIGHT - 20
-        # ):
-        #     coin_x = random.uniform(0, WIDTH - player.rect.x - 50)
-        #     coin_y = random.uniform(0, HEIGHT - player.rect.y - 50)
-
-        # ball_obj.update()
 
         observation = self._get_obs()
         info = self._get_info()
@@ -392,10 +289,9 @@ class CoinCollectorEnv(Env):
         #     self.coin_collisions,
         # )
 
-        self._counter -= self.dt if self.render_mode == "human" else 16.67
-        if self._counter < 0:
-            self.timer -= 1
-            self._counter += 1000
+        if self.render_mode == "human" and self.screen:
+            if pygame.event.get(pygame.USEREVENT):
+                self.timer -= 1
 
         if self.render_mode == "human":
             self._render_frame(curr_gen=curr_gen)
@@ -405,29 +301,15 @@ class CoinCollectorEnv(Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
+        if not self.render_mode == "human" and self.repeat_every:
+            self.repeat_every.stop()
+
         self.score = 0
-        self.timer = 20
+        self.timer = 21 # 20 + 1 because of the timer implementation quirk
 
         self.player_loc = np.array([WIDTH // 2, HEIGHT // 2])
 
         self.coin_loc = self.np_random.integers(0, HEIGHT - 20, size=2, dtype=int)
-
-        # while np.array_equal(self.coin_loc, self.player_loc):
-        #     self.coin_loc = self.np_random.integers(0, HEIGHT - 20, size=2, dtype=int)
-
-        # self.current_state[2] = self.coin_loc
-        # self.current_state[0] = self.player_loc
-
-        # self.initial_vel = self.vel
-
-        self.coin_collisions = 0
-
-        # ball_obj = Actor(ball_image, steps=speed_slider.get_current_value())
-
-        # ball_obj.rect.centerx = random.randint(0, WIDTH)
-        # ball_obj.rect.centery = random.randint(0, HEIGHT)
-
-        # sprites.add(ball_obj)
 
         self.auto_mode = False
         self.done_reset = True
@@ -436,6 +318,10 @@ class CoinCollectorEnv(Env):
         self.coin_cps = 0
 
         self.reward = 0
+
+        if not self.render_mode == "human":
+            self.repeat_every = Repeat(1, self._decrease_timer)
+            self.repeat_every.start()
 
         observation = self._get_obs()
         info = self._get_info()
@@ -554,17 +440,7 @@ class CoinCollectorEnv(Env):
                 "pos_rel:",
                 f"{round(self.pos_rel, 2)}",
                 f"reward: {round(self.reward, 2)}",
-                # f"{round(self.pos_rel, 1)}",
             ]
-
-            # positions = [
-            #     (WIDTH - 10, 10),
-            #     (WIDTH - 10, 40 + self.smaller_font.get_height()),
-            #     (WIDTH - 10, 50 + self.smaller_font.get_height()),
-            #     (WIDTH - 10, 115 + self.smaller_font.get_height()),
-            #     (WIDTH - 10, 180 + self.smaller_font.get_height()),
-            #     # (WIDTH - 10, 245 + self.smaller_font.get_height()),
-            # ]
 
             for i in range(len(debug_texts)):
                 draw_text(
@@ -685,49 +561,3 @@ class CoinCollectorEnv(Env):
         if self.screen is not None:
             pygame.display.quit()
             pygame.quit()
-
-
-if __name__ == "__main__":
-    env = CoinCollectorEnv(render_mode="human")
-    # from gymnasium.utils.env_checker import check_env
-
-    state_size = env.observation_space.shape[0]
-    action_size = env.action_space.n
-    n_episodes = 1000
-    batch_size = 32
-
-    agent = nn_helper.DQNAgent(n_episodes, state_size, action_size)
-
-    # check_env(env)
-    for e in range(n_episodes + 1):
-        state, info = env.reset()
-        state = np.reshape(state, [1, state_size])
-
-        done = False
-        time = 0
-        while not done:
-            env.render(e)
-            action = agent.act(state)
-            next_state, reward, done, _, info = env.step(action, e)
-            # reward = reward if not done else -10
-            next_state = np.reshape(next_state, [1, state_size])
-            agent.remember(state, action, reward, next_state, done)
-            state = next_state
-            if done:
-                print(
-                    "Episode: {}/{}, Score: {}, Epsilon: {:.2}".format(
-                        e, n_episodes - 1, time, agent.epsilon
-                    )
-                )
-            time += 1
-        if len(agent.memory) > batch_size:
-            agent.train(batch_size)
-        if e % 50 == 0:
-            agent.save("./model/weights_" + "{:04d}".format(e) + ".hdf5")
-    # model = nn_helper.create_model(env)
-    # nn_helper.train_model(model, env)
-    # nn_helper.evaluate_model(model, env)
-
-    # model.save_weights(
-    #     "./model/dqn_{}_weights.h5f".format("coin_collector"), overwrite=True
-    # )

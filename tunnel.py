@@ -3,7 +3,6 @@ import sys
 import os
 import navigate
 import random
-import math
 
 # school wifi doesn't allow me to install custom packages from pypi so yeah, enjoy my custom coded text-based game
 

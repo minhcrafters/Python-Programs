@@ -1,26 +1,19 @@
-import gymnasium as gym
-import numpy as np
+"""
+Reinforcement Unsupervised Learning Neural Network Model v2
+Author: minhcrafters
+With some code from StackOverflow :)
+"""
+
+import keras
 import random
 import tensorflow as tf
+import numpy as np
+import tensorflow_probability as tfp
 
-from collections import deque
+from keras.layers import Dense, Flatten
 from keras.models import Sequential
-from keras.layers import Dense
+from collections import deque
 from keras.optimizers import Adam
-from keras import callbacks
-
-# from rl.memory import EpisodeParameterMemory
-
-
-# def flatten_observation(observation: gym.spaces.Dict) -> np.ndarray:
-#     flattened_observation = []
-#     for key, value in observation.items():
-#         if isinstance(value, dict):
-#             for subkey, subvalue in value.items():
-#                 flattened_observation.extend(subvalue.reshape(-1))
-#         else:
-#             flattened_observation.extend(value.reshape(-1))
-#     return np.array(flattened_observation)
 
 
 class DQNAgent:
@@ -31,17 +24,17 @@ class DQNAgent:
         # Create a memory buffer with a maximum length of nb_episodes
         self.memory = deque(maxlen=nb_episodes)
         # Set the discount factor for future rewards
-        self.gamma = 0.95
+        self.gamma = 0.9
         # Initialize the state to None
         self.state = None
         # Initialize the exploration rate for the agent
         self.epsilon = 1.0
         # Set the decay rate for the exploration rate
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = 0.99
         # Set the minimum exploration rate
         self.epsilon_min = 0.01
         # Set the learning rate for the neural network
-        self.learning_rate = 1e-3
+        self.learning_rate = 0.01
         # Use MirroredStrategy for distributed training
         self.strategy = tf.distribute.MirroredStrategy()
 
@@ -53,8 +46,12 @@ class DQNAgent:
         model = Sequential()
         model.add(Dense(32, activation="relu", input_dim=self.state_size))
         model.add(Dense(32, activation="relu"))
-        model.add(Dense(self.action_size, activation="linear"))
-        model.compile(loss="mse", optimizer=Adam(learning_rate=self.learning_rate))
+        model.add(Dense(self.action_size, activation="softmax"))
+        model.compile(
+            loss="sparse_categorical_crossentropy",
+            optimizer=Adam(learning_rate=self.learning_rate),
+            metrics=["accuracy"],
+        )
         return model
 
     def remember(self, state, action, reward, next_state, done):
@@ -82,85 +79,233 @@ class DQNAgent:
         self.model.save_weights(name)
 
 
-# def create_model(env: gym.Env):
-#     model = Sequential()
-#     model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
-#     model.add(Dense(16))
-#     model.add(Activation("relu"))
-#     model.add(Dense(16))
-#     model.add(Activation("relu"))
-#     model.add(Dense(16))
-#     model.add(Activation("relu"))
-#     model.add(Dense(env.action_space.n))
-#     model.add(Activation("linear"))
+class PPOMemory:
+    def __init__(self, batch_size):
+        self.states = []
+        self.probs = []
+        self.vals = []
+        self.actions = []
+        self.rewards = []
+        self.dones = []
 
-#     print(model.summary())
+        self.batch_size = batch_size
 
-#     # model.compile(loss="mse", optimizer="adam", metrics=["accuracy"])
+    def generate_batches(self):
+        n_states = len(self.states)
+        batch_start = np.arange(0, n_states, self.batch_size)
+        indices = np.arange(n_states, dtype=np.int64)
+        np.random.shuffle(indices)
+        batches = [indices[i : i + self.batch_size] for i in batch_start]
 
-#     # memory = EpisodeParameterMemory(limit=1000, window_length=1)
+        return (
+            np.array(self.states),
+            np.array(self.actions),
+            np.array(self.probs),
+            np.array(self.vals),
+            np.array(self.rewards),
+            np.array(self.dones),
+            batches,
+        )
 
-#     # cem = CEMAgent(
-#     #     model=model,
-#     #     nb_actions=output_dim,
-#     #     memory=memory,
-#     #     batch_size=32,
-#     #     nb_steps_warmup=2000,
-#     #     train_interval=50,
-#     #     elite_frac=0.05,
-#     # )
+    def store_memory(self, state, action, probs, vals, reward, done):
+        self.states.append(state)
+        self.actions.append(action)
+        self.probs.append(probs)
+        self.vals.append(vals)
+        self.rewards.append(reward)
+        self.dones.append(done)
 
-#     # cem.compile()
-
-#     memory = SequentialMemory(limit=50000, window_length=1)
-#     policy = BoltzmannQPolicy()
-#     dqn = DQNAgent(
-#         model=model,
-#         nb_actions=env.action_space.n,
-#         memory=memory,
-#         nb_steps_warmup=10,
-#         target_model_update=1e-2,
-#         policy=policy,
-#     )
-#     dqn.compile(adam_v2.Adam(learning_rate=1e-1), metrics=["mae"])
-
-#     return dqn
-
-
-# Finally, evaluate our algorithm for 5 episodes.
+    def clear_memory(self):
+        self.states = []
+        self.probs = []
+        self.actions = []
+        self.rewards = []
+        self.dones = []
+        self.vals = []
 
 
-# def train_model(
-#     model: Sequential, x, y, x_test, y_test, epochs=100, batch_size=32, sample_weight=[]
-# ):
-#     # earlystopping_train = callbacks.EarlyStopping(
-#     #     monitor="loss", mode="min", patience=2, restore_best_weights=True
-#     # )
-#     earlystopping_test = callbacks.EarlyStopping(
-#         monitor="val_loss",
-#         mode="min",
-#         patience=5,
-#         restore_best_weights=True,
-#     )
-#     model.fit(
-#         x,
-#         y,
-#         epochs=epochs,
-#         batch_size=batch_size,
-#         validation_data=(x_test, y_test),
-#         callbacks=[earlystopping_test],
-#         workers=-1,
-#         sample_weight=sample_weight,
-#     )
-#     # model.fit(None, nb_steps=100000, visualize=False)
+class ActorNetwork(keras.Model):
+    def __init__(self, n_actions, fc1_dims=256, fc2_dims=256):
+        super(ActorNetwork, self).__init__()
+
+        self.fc1 = Dense(fc1_dims, activation="relu")
+        self.fc2 = Dense(fc2_dims, activation="relu")
+        self.flatten = Flatten()
+        self.fc3 = Dense(n_actions, activation="softmax")
+
+    def call(self, state):
+        x = self.fc1(state)
+        x = self.flatten(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+
+        return x
 
 
-# def run(
-#     env: gym.Env,
-#     model: Sequential = None,
-# ):
-#     train_model(model, env)
+class CriticNetwork(keras.Model):
+    def __init__(self, fc1_dims=256, fc2_dims=256):
+        super(CriticNetwork, self).__init__()
+        self.fc1 = Dense(fc1_dims, activation="relu")
+        self.fc2 = Dense(fc2_dims, activation="relu")
+        self.flatten = Flatten()
+        self.q = Dense(1, activation=None)
 
-#     scores = evaluate_model(model, data_test[0], data_test[1])
-#     print(tb([["Loss", scores[0]], ["Accuracy", scores[1]]]))
-#     return model
+    def call(self, state):
+        x = self.fc1(state)
+        x = self.flatten(x)
+        x = self.fc2(x)
+        q = self.q(x)
+
+        return q
+
+
+TELEPORT_REWARD = 0.1  # Bonus or penalty for teleportation
+MIN_DISTANCE_PENALTY = -1  # Minimum penalty for being far from a coin
+MAX_DISTANCE_PENALTY = 0  # Maximum penalty for being far from a coin
+
+
+def calculate_reward(
+    agent_position, coin_position, score, previous_agent_position=None
+):
+    distance = np.linalg.norm(agent_position - coin_position)
+
+    # Calculate distance-based penalty
+    distance_penalty = np.interp(
+        distance, [-800, 800], [MAX_DISTANCE_PENALTY, MIN_DISTANCE_PENALTY]
+    )
+
+    # Calculate reward for collecting coin
+    coin_reward = (
+        score
+        + np.sum(
+            np.subtract(agent_position, previous_agent_position)
+            if np.sum(agent_position) > np.sum(previous_agent_position)
+            else np.subtract(previous_agent_position, agent_position)
+        )
+        * 0.1
+    )
+
+    # Calculate total reward
+    total_reward = coin_reward + distance_penalty + TELEPORT_REWARD
+
+    return total_reward
+
+
+class PPOAgent:
+    def __init__(
+        self,
+        n_actions,
+        input_dims,
+        gamma=0.99,
+        alpha=0.0003,
+        gae_lambda=0.95,
+        policy_clip=0.2,
+        batch_size=64,
+        n_epochs=10,
+        chkpt_dir="./models/",
+    ):
+        self.gamma = gamma
+        self.policy_clip = policy_clip
+        self.n_epochs = n_epochs
+        self.gae_lambda = gae_lambda
+        self.chkpt_dir = chkpt_dir
+
+        self.actor = ActorNetwork(n_actions)
+        self.actor.compile(optimizer=Adam(learning_rate=alpha), metrics=["accuracy"])
+        self.critic = CriticNetwork()
+        self.critic.compile(optimizer=Adam(learning_rate=alpha), metrics=["accuracy"])
+        self.memory = PPOMemory(batch_size)
+
+    def store_transition(self, state, action, probs, vals, reward, done):
+        self.memory.store_memory(state, action, probs, vals, reward, done)
+
+    def save_models(self):
+        print("... Saving models ...")
+        self.actor.save(self.chkpt_dir + "actor")
+        self.critic.save(self.chkpt_dir + "critic")
+
+    def load_models(self):
+        print("... Loading models ...")
+        self.actor = keras.models.load_model(self.chkpt_dir + "actor")
+        self.critic = keras.models.load_model(self.chkpt_dir + "critic")
+
+    def choose_action(self, observation):
+        state = tf.convert_to_tensor([observation])
+
+        probs = self.actor(state)
+        dist = tfp.distributions.Categorical(probs)
+        action = dist.sample()
+        log_prob = dist.log_prob(action)
+        value = self.critic(state)
+
+        action = action.numpy()[0]
+        value = value.numpy()[0]
+        log_prob = log_prob.numpy()[0]
+
+        return action, log_prob, value
+
+    def learn(self):
+        for _ in range(self.n_epochs):
+            (
+                state_arr,
+                action_arr,
+                old_prob_arr,
+                vals_arr,
+                reward_arr,
+                dones_arr,
+                batches,
+            ) = self.memory.generate_batches()
+
+            values = vals_arr
+            advantage = np.zeros(len(reward_arr), dtype=np.float32)
+
+            for t in range(len(reward_arr) - 1):
+                discount = 1
+                a_t = 0
+                for k in range(t, len(reward_arr) - 1):
+                    a_t += discount * (
+                        reward_arr[k]
+                        + self.gamma * values[k + 1] * (1 - int(dones_arr[k]))
+                        - values[k]
+                    )
+                    discount *= self.gamma * self.gae_lambda
+                advantage[t] = a_t
+
+            for batch in batches:
+                with tf.GradientTape(persistent=True) as tape:
+                    states = tf.convert_to_tensor(state_arr[batch])
+                    old_probs = tf.convert_to_tensor(old_prob_arr[batch])
+                    actions = tf.convert_to_tensor(action_arr[batch])
+
+                    probs = self.actor(states)
+                    dist = tfp.distributions.Categorical(probs)
+                    new_probs = dist.log_prob(actions)
+
+                    critic_value = self.critic(states)
+
+                    critic_value = tf.squeeze(critic_value, 1)
+
+                    prob_ratio = tf.math.exp(new_probs - old_probs)
+                    weighted_probs = advantage[batch] * prob_ratio
+                    clipped_probs = tf.clip_by_value(
+                        prob_ratio, 1 - self.policy_clip, 1 + self.policy_clip
+                    )
+                    weighted_clipped_probs = clipped_probs * advantage[batch]
+                    actor_loss = -tf.math.minimum(
+                        weighted_probs, weighted_clipped_probs
+                    )
+                    actor_loss = tf.math.reduce_mean(actor_loss)
+
+                    returns = advantage[batch] + values[batch]
+                    # critic_loss = tf.math.reduce_mean(tf.math.pow(
+                    #                                  returns-critic_value, 2))
+                    critic_loss = keras.losses.MSE(critic_value, returns)
+
+                actor_params = self.actor.trainable_variables
+                actor_grads = tape.gradient(actor_loss, actor_params)
+                critic_params = self.critic.trainable_variables
+                critic_grads = tape.gradient(critic_loss, critic_params)
+                self.actor.optimizer.apply_gradients(zip(actor_grads, actor_params))
+                self.critic.optimizer.apply_gradients(zip(critic_grads, critic_params))
+
+        self.memory.clear_memory()
