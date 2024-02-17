@@ -18,6 +18,9 @@ from keras.optimizers import Adam
 
 class DQNAgent:
     def __init__(self, nb_episodes, state_size, action_size):
+        """
+        Initialize the DQN agent with the given number of episodes, state size, and action size.
+        """
         # Initialize the state and action sizes
         self.state_size = state_size
         self.action_size = action_size
@@ -81,6 +84,15 @@ class DQNAgent:
 
 class PPOMemory:
     def __init__(self, batch_size):
+        """
+        Initialize the ReplayBuffer class with the given batch size.
+
+        Parameters:
+            batch_size (int): The size of the batch for the replay buffer.
+
+        Returns:
+            None
+        """
         self.states = []
         self.probs = []
         self.vals = []
@@ -91,6 +103,12 @@ class PPOMemory:
         self.batch_size = batch_size
 
     def generate_batches(self):
+        """
+        Generate batches of states, actions, probabilities, values, rewards, and dones.
+
+        Returns:
+            tuple: A tuple containing numpy arrays of states, actions, probabilities, values, rewards, dones, and batches.
+        """
         n_states = len(self.states)
         batch_start = np.arange(0, n_states, self.batch_size)
         indices = np.arange(n_states, dtype=np.int64)
@@ -175,13 +193,10 @@ def calculate_reward(
     )
 
     # Calculate reward for collecting coin
-    coin_reward = (
-        score
-        + np.sum(
-            np.subtract(agent_position, previous_agent_position)
-            if np.sum(agent_position) > np.sum(previous_agent_position)
-            else np.subtract(previous_agent_position, agent_position)
-        )
+    coin_reward = score + np.sum(
+        np.subtract(agent_position, previous_agent_position)
+        if np.sum(agent_position) > np.sum(previous_agent_position)
+        else np.subtract(previous_agent_position, agent_position)
     )
 
     # Calculate total reward
@@ -243,68 +258,77 @@ class PPOAgent:
 
         return action, log_prob, value
 
-    def learn(self):
-        for _ in range(self.n_epochs):
-            (
-                state_arr,
-                action_arr,
-                old_prob_arr,
-                vals_arr,
-                reward_arr,
-                dones_arr,
-                batches,
-            ) = self.memory.generate_batches()
 
-            values = vals_arr
-            advantage = np.zeros(len(reward_arr), dtype=np.float32)
+def learn(self):
+    """
+    A method for learning using the Proximal Policy Optimization (PPO) algorithm.
+    """
 
-            for t in range(len(reward_arr) - 1):
-                discount = 1
-                a_t = 0
-                for k in range(t, len(reward_arr) - 1):
-                    a_t += discount * (
-                        reward_arr[k]
-                        + self.gamma * values[k + 1] * (1 - int(dones_arr[k]))
-                        - values[k]
-                    )
-                    discount *= self.gamma * self.gae_lambda
-                advantage[t] = a_t
+    # Loop through a number of epochs
+    for _ in range(self.n_epochs):
+        # Generate batches of data from memory
+        (
+            state_arr,
+            action_arr,
+            old_prob_arr,
+            vals_arr,
+            reward_arr,
+            dones_arr,
+            batches,
+        ) = self.memory.generate_batches()
 
-            for batch in batches:
-                with tf.GradientTape(persistent=True) as tape:
-                    states = tf.convert_to_tensor(state_arr[batch])
-                    old_probs = tf.convert_to_tensor(old_prob_arr[batch])
-                    actions = tf.convert_to_tensor(action_arr[batch])
+        # Calculate advantages for each time step
+        values = vals_arr
+        advantage = np.zeros(len(reward_arr), dtype=np.float32)
+        for t in range(len(reward_arr) - 1):
+            discount = 1
+            a_t = 0
+            for k in range(t, len(reward_arr) - 1):
+                a_t += discount * (
+                    reward_arr[k]
+                    + self.gamma * values[k + 1] * (1 - int(dones_arr[k]))
+                    - values[k]
+                )
+                discount *= self.gamma * self.gae_lambda
+            advantage[t] = a_t
 
-                    probs = self.actor(states)
-                    dist = tfp.distributions.Categorical(probs)
-                    new_probs = dist.log_prob(actions)
+        # Update the actor and critic networks
+        for batch in batches:
+            with tf.GradientTape(persistent=True) as tape:
+                states = tf.convert_to_tensor(state_arr[batch])
+                old_probs = tf.convert_to_tensor(old_prob_arr[batch])
+                actions = tf.convert_to_tensor(action_arr[batch])
 
-                    critic_value = self.critic(states)
+                # Get action probabilities from the actor network
+                probs = self.actor(states)
+                dist = tfp.distributions.Categorical(probs)
+                new_probs = dist.log_prob(actions)
 
-                    critic_value = tf.squeeze(critic_value, 1)
+                # Get critic value prediction from the critic network
+                critic_value = self.critic(states)
+                critic_value = tf.squeeze(critic_value, 1)
 
-                    prob_ratio = tf.math.exp(new_probs - old_probs)
-                    weighted_probs = advantage[batch] * prob_ratio
-                    clipped_probs = tf.clip_by_value(
-                        prob_ratio, 1 - self.policy_clip, 1 + self.policy_clip
-                    )
-                    weighted_clipped_probs = clipped_probs * advantage[batch]
-                    actor_loss = -tf.math.minimum(
-                        weighted_probs, weighted_clipped_probs
-                    )
-                    actor_loss = tf.math.reduce_mean(actor_loss)
+                # Calculate PPO loss for the actor network
+                prob_ratio = tf.math.exp(new_probs - old_probs)
+                weighted_probs = advantage[batch] * prob_ratio
+                clipped_probs = tf.clip_by_value(
+                    prob_ratio, 1 - self.policy_clip, 1 + self.policy_clip
+                )
+                weighted_clipped_probs = clipped_probs * advantage[batch]
+                actor_loss = -tf.math.minimum(weighted_probs, weighted_clipped_probs)
+                actor_loss = tf.math.reduce_mean(actor_loss)
 
-                    returns = advantage[batch] + values[batch]
-                    # critic_loss = tf.math.reduce_mean(tf.math.pow(
-                    #                                  returns-critic_value, 2))
-                    critic_loss = keras.losses.MSE(critic_value, returns)
+                # Calculate MSE loss for the critic network
+                returns = advantage[batch] + values[batch]
+                critic_loss = keras.losses.MSE(critic_value, returns)
 
-                actor_params = self.actor.trainable_variables
-                actor_grads = tape.gradient(actor_loss, actor_params)
-                critic_params = self.critic.trainable_variables
-                critic_grads = tape.gradient(critic_loss, critic_params)
-                self.actor.optimizer.apply_gradients(zip(actor_grads, actor_params))
-                self.critic.optimizer.apply_gradients(zip(critic_grads, critic_params))
+            # Compute and apply gradients for actor and critic networks
+            actor_params = self.actor.trainable_variables
+            actor_grads = tape.gradient(actor_loss, actor_params)
+            critic_params = self.critic.trainable_variables
+            critic_grads = tape.gradient(critic_loss, critic_params)
+            self.actor.optimizer.apply_gradients(zip(actor_grads, actor_params))
+            self.critic.optimizer.apply_gradients(zip(critic_grads, critic_params))
 
-        self.memory.clear_memory()
+    # Clear the memory after all epochs
+    self.memory.clear_memory()

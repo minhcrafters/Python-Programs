@@ -20,6 +20,9 @@ from threading import Thread, Event
 
 class Repeat(Thread):
     def __init__(self, delay, function, *args, **kwargs):
+        """
+        Initialize the thread with the given delay, function, args, and kwargs.
+        """
         Thread.__init__(self)
         self.abort = Event()
         self.delay = delay
@@ -31,7 +34,7 @@ class Repeat(Thread):
         self.abort.set()
 
     def run(self):
-        while not self.abort.isSet():
+        while not self.abort.is_set():
             self.function(*self.args, **self.kwargs)
             self.abort.wait(self.delay)
 
@@ -44,6 +47,16 @@ ACCELERATION = 0.25
 
 
 def make_gif(frames_dir, delete_frames=True):
+    """
+    Create a GIF from a directory of image frames.
+
+    Args:
+        frames_dir (str): The directory containing the image frames.
+        delete_frames (bool, optional): Whether to delete the image frames after creating the GIF. Defaults to True.
+
+    Returns:
+        None
+    """
     from moviepy.editor import ImageSequenceClip
     from natsort import natsorted
     import glob
@@ -64,6 +77,15 @@ class CoinCollectorEnv(Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
     def __init__(self, render_mode=None):
+        """
+        Constructor for CoinCollectorEnv.
+
+        Args:
+            render_mode (str, optional): The rendering mode. Defaults to None.
+
+        Returns:
+            None
+        """
         global SPEED
 
         super(CoinCollectorEnv, self).__init__()
@@ -121,6 +143,9 @@ class CoinCollectorEnv(Env):
         self.pos_rel = 0
 
     def draw_scores(self):
+        """
+        This function draws the score on the screen using the provided font and position.
+        """
         text = f"{self.score}"
         text_x = (WIDTH - self.font.size(text)[0]) // 2
         text_y = self.font.get_height() // 2
@@ -133,17 +158,17 @@ class CoinCollectorEnv(Env):
             shadow_offset=3,
         )
 
-    def flatten(self, dictionary: dict, parent_key="", separator="_"):
-        items = []
-        for key, value in dictionary.items():
-            new_key = parent_key + separator + key if parent_key else key
-            if isinstance(value, MutableMapping):
-                items.extend(self.flatten(value, new_key, separator=separator).items())
-            else:
-                items.append((new_key, value))
-        return dict(items)
-
     def draw_timer(self, player, offset: int = 0):
+        """
+        Draws a timer on the screen for the specified player.
+
+        Args:
+            player: The player for whom the timer is being drawn.
+            offset (int): The vertical offset for the timer display.
+
+        Returns:
+            None
+        """
         text = f"Accel: {round(ACCELERATION, 2)} | Speed: {SPEED}"
         text_x = (WIDTH - self.smaller_font.size(text)[0]) // 2
         text_y = (HEIGHT - self.smaller_font.get_height()) - 80 + offset
@@ -156,6 +181,12 @@ class CoinCollectorEnv(Env):
         )
 
     def _get_obs(self):
+        """
+        Get observation data for the player including player location, velocity, and coin location.
+
+        Returns:
+            NDArray: A Numpy array containing player location, coin location, and velocity.
+        """
         # return np.stack((self.player_loc, self.vel, self.coin_loc))
         player_loc_list = self.player_loc.tolist()
         coin_loc_list = self.coin_loc.tolist()
@@ -190,6 +221,19 @@ class CoinCollectorEnv(Env):
         self.timer -= 1
 
     def step(self, action, curr_gen: int):
+        """
+        A function to perform a step in the game environment.
+
+        Parameters:
+            action: The action to be taken.
+            curr_gen: The current generation.
+
+        Returns:
+            observation: The observation of the environment after the step.
+            reward: The reward obtained from the step.
+            done: Indicates if the episode is finished.
+            info: Additional information about the step.
+        """
         assert self.action_space.contains(
             action
         ), f"{action!r} ({type(action)}) invalid"
@@ -298,6 +342,17 @@ class CoinCollectorEnv(Env):
         return observation, self.reward, done, {}, info
 
     def reset(self, seed=None, options=None):
+        """
+        Reset the environment to its initial state.
+        
+        Args:
+            seed: The random seed for the environment (optional).
+            options: Additional options for resetting the environment (optional).
+        
+        Returns:
+            observation: The observation of the environment after the reset.
+            info: Additional information about the environment after the reset.
+        """
         super().reset(seed=seed)
 
         if not self.render_mode == "human" and self.repeat_every:
@@ -355,6 +410,15 @@ class CoinCollectorEnv(Env):
         return self._render_frame(curr_gen)
 
     def _render_frame(self, curr_gen: int):
+        """
+        Render the frame for the game display.
+
+        Args:
+            curr_gen (int): The current generation.
+
+        Returns:
+            None
+        """
         if self.screen is None and self.render_mode == "human":
             pygame.init()
             pygame.font.init()
