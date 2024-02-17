@@ -177,19 +177,19 @@ class CriticNetwork(keras.Model):
         return q
 
 
-TELEPORT_REWARD = 0.1  # Bonus or penalty for teleportation
-MIN_DISTANCE_PENALTY = -1  # Minimum penalty for being far from a coin
-MAX_DISTANCE_PENALTY = 1  # Maximum penalty for being far from a coin
+MAX_STEPS = 10000  # Bonus or penalty for teleportation
+MIN_DISTANCE_PENALTY = -10  # Minimum penalty for being far from a coin
+MAX_DISTANCE_PENALTY = 10  # Maximum penalty for being far from a coin
 
 
 def calculate_reward(
-    agent_position, coin_position, score, previous_agent_position=None
+    agent_position, coin_position, score, current_gen, previous_agent_position=None
 ):
     distance = np.linalg.norm(agent_position - coin_position)
 
     # Calculate distance-based penalty
     distance_penalty = np.interp(
-        distance, [-800, 800], [MAX_DISTANCE_PENALTY, MIN_DISTANCE_PENALTY]
+        distance, [-38.5, 800], [MAX_DISTANCE_PENALTY, MIN_DISTANCE_PENALTY]
     )
 
     # Calculate reward for collecting coin
@@ -200,7 +200,7 @@ def calculate_reward(
     )
 
     # Calculate total reward
-    total_reward = coin_reward + distance_penalty + TELEPORT_REWARD
+    total_reward = (coin_reward + distance_penalty) * (current_gen / MAX_STEPS)
 
     return total_reward
 
@@ -244,7 +244,7 @@ class PPOAgent:
         self.critic = keras.models.load_model(self.chkpt_dir + "critic")
 
     def choose_action(self, observation):
-        state = tf.convert_to_tensor([observation])
+        state = tf.convert_to_tensor(observation)
 
         probs = self.actor(state)
         dist = tfp.distributions.Categorical(probs)
@@ -259,76 +259,76 @@ class PPOAgent:
         return action, log_prob, value
 
 
-def learn(self):
-    """
-    A method for learning using the Proximal Policy Optimization (PPO) algorithm.
-    """
+    def learn(self):
+        """
+        A method for learning using the Proximal Policy Optimization (PPO) algorithm.
+        """
 
-    # Loop through a number of epochs
-    for _ in range(self.n_epochs):
-        # Generate batches of data from memory
-        (
-            state_arr,
-            action_arr,
-            old_prob_arr,
-            vals_arr,
-            reward_arr,
-            dones_arr,
-            batches,
-        ) = self.memory.generate_batches()
+        # Loop through a number of epochs
+        for _ in range(self.n_epochs):
+            # Generate batches of data from memory
+            (
+                state_arr,
+                action_arr,
+                old_prob_arr,
+                vals_arr,
+                reward_arr,
+                dones_arr,
+                batches,
+            ) = self.memory.generate_batches()
 
-        # Calculate advantages for each time step
-        values = vals_arr
-        advantage = np.zeros(len(reward_arr), dtype=np.float32)
-        for t in range(len(reward_arr) - 1):
-            discount = 1
-            a_t = 0
-            for k in range(t, len(reward_arr) - 1):
-                a_t += discount * (
-                    reward_arr[k]
-                    + self.gamma * values[k + 1] * (1 - int(dones_arr[k]))
-                    - values[k]
-                )
-                discount *= self.gamma * self.gae_lambda
-            advantage[t] = a_t
+            # Calculate advantages for each time step
+            values = vals_arr
+            advantage = np.zeros(len(reward_arr), dtype=np.float32)
+            for t in range(len(reward_arr) - 1):
+                discount = 1
+                a_t = 0
+                for k in range(t, len(reward_arr) - 1):
+                    a_t += discount * (
+                        reward_arr[k]
+                        + self.gamma * values[k + 1] * (1 - int(dones_arr[k]))
+                        - values[k]
+                    )
+                    discount *= self.gamma * self.gae_lambda
+                advantage[t] = a_t
 
-        # Update the actor and critic networks
-        for batch in batches:
-            with tf.GradientTape(persistent=True) as tape:
-                states = tf.convert_to_tensor(state_arr[batch])
-                old_probs = tf.convert_to_tensor(old_prob_arr[batch])
-                actions = tf.convert_to_tensor(action_arr[batch])
+            # Update the actor and critic networks
+            for batch in batches:
+                with tf.GradientTape(persistent=True) as tape:
+                    states = tf.convert_to_tensor(state_arr[batch])
+                    old_probs = tf.convert_to_tensor(old_prob_arr[batch])
+                    actions = tf.convert_to_tensor(action_arr[batch])
 
-                # Get action probabilities from the actor network
-                probs = self.actor(states)
-                dist = tfp.distributions.Categorical(probs)
-                new_probs = dist.log_prob(actions)
+                    # Get action probabilities from the actor network
+                    probs = self.actor(states)
+                    dist = tfp.distributions.Categorical(probs)
+                    new_probs = dist.log_prob(actions)
 
-                # Get critic value prediction from the critic network
-                critic_value = self.critic(states)
-                critic_value = tf.squeeze(critic_value, 1)
+                    # Get critic value prediction from the critic network
+                    critic_value = self.critic(states)
+                    critic_value = tf.squeeze(critic_value, 1)
 
-                # Calculate PPO loss for the actor network
-                prob_ratio = tf.math.exp(new_probs - old_probs)
-                weighted_probs = advantage[batch] * prob_ratio
-                clipped_probs = tf.clip_by_value(
-                    prob_ratio, 1 - self.policy_clip, 1 + self.policy_clip
-                )
-                weighted_clipped_probs = clipped_probs * advantage[batch]
-                actor_loss = -tf.math.minimum(weighted_probs, weighted_clipped_probs)
-                actor_loss = tf.math.reduce_mean(actor_loss)
+                    # Calculate PPO loss for the actor network
+                    prob_ratio = tf.math.exp(new_probs - old_probs)
+                    weighted_probs = advantage[batch] * prob_ratio
+                    clipped_probs = tf.clip_by_value(
+                        prob_ratio, 1 - self.policy_clip, 1 + self.policy_clip
+                    )
+                    weighted_clipped_probs = clipped_probs * advantage[batch]
+                    actor_loss = -tf.math.minimum(weighted_probs, weighted_clipped_probs)
+                    actor_loss = tf.math.reduce_mean(actor_loss)
 
-                # Calculate MSE loss for the critic network
-                returns = advantage[batch] + values[batch]
-                critic_loss = keras.losses.MSE(critic_value, returns)
+                    # Calculate MSE loss for the critic network
+                    returns = advantage[batch] + values[batch]
+                    critic_loss = keras.losses.MSE(critic_value, returns)
 
-            # Compute and apply gradients for actor and critic networks
-            actor_params = self.actor.trainable_variables
-            actor_grads = tape.gradient(actor_loss, actor_params)
-            critic_params = self.critic.trainable_variables
-            critic_grads = tape.gradient(critic_loss, critic_params)
-            self.actor.optimizer.apply_gradients(zip(actor_grads, actor_params))
-            self.critic.optimizer.apply_gradients(zip(critic_grads, critic_params))
+                # Compute and apply gradients for actor and critic networks
+                actor_params = self.actor.trainable_variables
+                actor_grads = tape.gradient(actor_loss, actor_params)
+                critic_params = self.critic.trainable_variables
+                critic_grads = tape.gradient(critic_loss, critic_params)
+                self.actor.optimizer.apply_gradients(zip(actor_grads, actor_params))
+                self.critic.optimizer.apply_gradients(zip(critic_grads, critic_params))
 
-    # Clear the memory after all epochs
-    self.memory.clear_memory()
+        # Clear the memory after all epochs
+        self.memory.clear_memory()

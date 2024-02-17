@@ -42,7 +42,7 @@ if __name__ == "__main__":
     n_games = 900
 
     # Initialize variables to track the best score, score history, learning iterations, average score, and total steps
-    best_score = env.reward_range[0]
+    best_score = 0
     score_history = []
     learn_iters = 0
     avg_score = 0
@@ -58,7 +58,7 @@ if __name__ == "__main__":
         # Play the game until it's done
         while not done:
             # Choose an action using the PPO agent and take a step in the environment
-            action, prob, val = agent.choose_action(np.expand_dims(observation, axis=0))
+            action, prob, val = agent.choose_action(observation)
             observation_, reward, done, _, info = env.step(action, i)
             n_steps += 1
             score += reward

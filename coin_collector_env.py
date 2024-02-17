@@ -14,7 +14,6 @@ import numpy as np
 from itertools import product
 from pygame import Vector2
 from pg_utils import draw_text, scale_image
-from collections.abc import MutableMapping
 from threading import Thread, Event
 
 
@@ -40,7 +39,7 @@ class Repeat(Thread):
 
 
 SCALE_FACTOR = 0.75
-WIDTH, HEIGHT = 800, 600
+WIDTH = HEIGHT = 800
 
 SPEED = 25
 ACCELERATION = 0.25
@@ -127,6 +126,8 @@ class CoinCollectorEnv(Env):
         self.state = None
         self.timer = 0
 
+        self.current_step = 0
+
         self.repeat_every = None
 
         self._action_to_direction = {
@@ -190,23 +191,27 @@ class CoinCollectorEnv(Env):
         # return np.stack((self.player_loc, self.vel, self.coin_loc))
         player_loc_list = self.player_loc.tolist()
         coin_loc_list = self.coin_loc.tolist()
-        array = [
-            player_loc_list[0],
-            player_loc_list[1],
-            coin_loc_list[0],
-            coin_loc_list[1],
-            self.vel.x,
-            self.vel.y,
-        ]
-        return np.array(array, dtype=np.float64)
-        # return (
-        #     player_loc_list[0],
-        #     player_loc_list[1],
-        #     coin_loc_list[0],
-        #     coin_loc_list[1],
-        #     self.vel.x,
-        #     self.vel.y,
-        # )
+
+        # Scale player and coin location data between 0-1
+        player_loc_scaled = [player_loc_list[0] / WIDTH, player_loc_list[1] / WIDTH]
+        coin_loc_scaled = [coin_loc_list[0] / WIDTH, coin_loc_list[1] / WIDTH]
+
+        # Scale velocity components between 0-1
+        vel_scaled = [self.vel.x / SPEED, self.vel.y / SPEED]
+
+        # Combine all scaled data into an array
+        frame = np.array(
+            [
+                player_loc_scaled[0],
+                player_loc_scaled[1],
+                coin_loc_scaled[0],
+                coin_loc_scaled[1],
+                vel_scaled[0],
+                vel_scaled[1],
+            ]
+        )
+
+        return frame
 
     def _get_info(self):
         return {
@@ -243,35 +248,9 @@ class CoinCollectorEnv(Env):
         if self.timer <= 0:
             done = True
 
-        # screen.fill((59, 177, 227))
-
-        # self.player.pos.x = self.player_loc[0]
-        # self.player.pos.y = self.player_loc[1]
-
-        # print(player.rect.right)
-
-        # if player.rect.right <= 4:
-        #     player.rect.x = WIDTH
-        # if player.rect.left >= WIDTH:
-        #     player.rect.right = 0
-        # if player.rect.bottom <= 1:
-        #     player.rect.top = HEIGHT
-        # if player.rect.top >= HEIGHT:
-        #     player.rect.bottom = 0
-
-        # if self.player.rect.left <= 0 or self.player.rect.right >= WIDTH:
-        #     self.vel.x = -self.vel.x
-        # if self.player.rect.top <= 0 or self.player.rect.bottom >= HEIGHT:
-        #     self.vel.y = -self.vel.y
-
-        # if ball_obj.rect.left <= 0 or ball_obj.rect.right >= WIDTH:
-        #     ball_obj.vel.x = -ball_obj.vel.x
-        # if ball_obj.rect.top <= 0 or ball_obj.rect.bottom >= HEIGHT:
-        #     ball_obj.vel.y = -ball_obj.vel.y
+        self.current_step += 1
 
         direction = self._action_to_direction[action]
-
-        # self.player.control(*direction)
 
         self.vel.x += direction[0] * ACCELERATION * SPEED
         self.vel.y += direction[1] * ACCELERATION * SPEED
@@ -303,18 +282,14 @@ class CoinCollectorEnv(Env):
         self.player_loc[0] += self.vel.x * SCALE_FACTOR
         self.player_loc[1] += self.vel.y * SCALE_FACTOR
 
-        # if self.vel.x > SPEED:
-        #     self.vel.x = -self.vel.x + 0.9 * self.vel.x
-        #     self.vel.x = SPEED
-
-        # if self.vel.y > SPEED:
-        #     self.vel.y = -self.vel.y + 0.9 * self.vel.y
-        #     self.vel.y = SPEED
+        self.player_loc[0] = sorted((0, self.player_loc[0], WIDTH - 1))[1]
+        self.player_loc[1] = sorted((0, self.player_loc[1], HEIGHT - 1))[1]
 
         self.reward = calculate_reward(
             self.player_loc,
             self.coin_loc,
             self.score,
+            curr_gen + 1,
             previous_agent_position=prev_player_loc,
         )
 
@@ -326,11 +301,6 @@ class CoinCollectorEnv(Env):
 
         observation = self._get_obs()
         info = self._get_info()
-
-        # self.reward = nn_helper.calculate_reward(
-        #     info["rel_dist"],
-        #     self.coin_collisions,
-        # )
 
         if self.render_mode == "human" and self.screen:
             if pygame.event.get(pygame.USEREVENT):
@@ -344,11 +314,11 @@ class CoinCollectorEnv(Env):
     def reset(self, seed=None, options=None):
         """
         Reset the environment to its initial state.
-        
+
         Args:
             seed: The random seed for the environment (optional).
             options: Additional options for resetting the environment (optional).
-        
+
         Returns:
             observation: The observation of the environment after the reset.
             info: Additional information about the environment after the reset.
@@ -359,7 +329,7 @@ class CoinCollectorEnv(Env):
             self.repeat_every.stop()
 
         self.score = 0
-        self.timer = 21 # 20 + 1 because of the timer implementation quirk
+        self.timer = 21  # 20 + 1 because of the timer implementation quirk
 
         self.player_loc = np.array([WIDTH // 2, HEIGHT // 2])
 
@@ -370,6 +340,7 @@ class CoinCollectorEnv(Env):
         self.debug = False
         self._counter = 1000
         self.coin_cps = 0
+        self.current_step = 0
 
         self.reward = 0
 
@@ -502,7 +473,7 @@ class CoinCollectorEnv(Env):
                 f"{round(self.vel, 2)}",
                 "pos_rel:",
                 f"{round(self.pos_rel, 2)}",
-                f"reward: {round(self.reward, 2)}",
+                f"reward: {self.reward:.4f}",
             ]
 
             for i in range(len(debug_texts)):
